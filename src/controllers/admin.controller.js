@@ -112,7 +112,7 @@ console.log("jjo");
       secure: true,
       sameSite: "strict",
     })
-    .json(new ApiResponse(200, admin, "Admin logged in"));
+    .json(new ApiResponse(200, {admin,accessToken,refreshToken}, "Admin logged in"));
 });
 
 

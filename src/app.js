@@ -9,24 +9,24 @@ app.set("trust proxy", 1);
    SECURE CORS CONFIG
 ========================= */
 
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:5173",
-  "https://dsportdb.online",
-  "https://www.dsportdb.online",
-];
+
+
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(",")
+  : [];
+
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // allow server-to-server / Postman
+      // Allow server-to-server, Postman, curl
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin)) {
-        return callback(null, origin); // 👈 IMPORTANT
+        return callback(null, origin); // 🔥 MUST return origin when credentials=true
       }
 
-      return callback(new Error("CORS not allowed"));
+      return callback(new Error(`CORS not allowed: ${origin}`));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
