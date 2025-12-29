@@ -10,11 +10,9 @@ connectDB()
 
     // ✅ Initialize socket.io
     initSocket(server);
-
-    server.listen(process.env.PORT || 8000, () => {
-      console.log(
-        `Server is running on port ${process.env.PORT || 8000}`
-      );
+    const PORT = process.env.PORT || 8000;
+    server.listen(PORT, "0.0.0.0", () => {
+      console.log(`🚀 Server running on port ${PORT}`);
     });
 
     server.on("error", (err) => {
