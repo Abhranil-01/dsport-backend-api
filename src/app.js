@@ -4,11 +4,10 @@ import cookieParser from "cookie-parser";
 
 const app = express();
 
-app.set("trust proxy", 1); 
+app.set("trust proxy", 1);
 /* =========================
    SECURE CORS CONFIG
 ========================= */
-
 
 const allowedOrigins = [
   "http://localhost:3000",
@@ -33,7 +32,6 @@ app.use(
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   })
 );
-
 
 /* =========================
    MIDDLEWARES
