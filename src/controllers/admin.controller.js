@@ -102,16 +102,16 @@ console.log("jjo");
   await admin.save({ validateBeforeSave: false });
 
   res
-    .cookie("adminAccessToken", accessToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "strict",
-    })
-    .cookie("adminRefreshToken", refreshToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "strict",
-    })
+    // .cookie("adminAccessToken", accessToken, {
+    //   httpOnly: true,
+    //   secure: true,
+    //   sameSite: "strict",
+    // })
+    // .cookie("adminRefreshToken", refreshToken, {
+    //   httpOnly: true,
+    //   secure: true,
+    //   sameSite: "strict",
+    // })
     .json(new ApiResponse(200, {admin,accessToken,refreshToken}, "Admin logged in"));
 });
 
