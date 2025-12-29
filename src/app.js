@@ -4,31 +4,31 @@ import cookieParser from "cookie-parser";
 
 const app = express();
 
+app.set("trust proxy", 1); 
 /* =========================
    SECURE CORS CONFIG
 ========================= */
 
-const allowedOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(",")
-  : [];
+
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "https://dsportdb.online",
+  "https://www.dsportdb.online",
+];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // allow Postman, mobile apps, server-to-server
       if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
+      if (allowedOrigins.includes(origin)) return callback(null, true);
       return callback(new Error("CORS not allowed"));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
 
 /* =========================
    MIDDLEWARES
