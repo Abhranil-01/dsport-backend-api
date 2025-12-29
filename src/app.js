@@ -19,9 +19,14 @@ const allowedOrigins = [
 
 app.use(
   cors({
-    origin: function (origin, callback) {
+    origin: (origin, callback) => {
+      // allow server-to-server / Postman
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, origin); // 👈 IMPORTANT
+      }
+
       return callback(new Error("CORS not allowed"));
     },
     credentials: true,
