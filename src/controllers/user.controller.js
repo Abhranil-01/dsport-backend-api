@@ -166,13 +166,14 @@ console.log("d",user.otp,cleanedOtp);
 
   const { accessToken, refreshToken } =
     await generateAccessTokenAndRefreshToken(user._id);
-
-  const cookieOptions = {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-  };
-
+    
+const cookieOptions = {
+  httpOnly: true,
+  secure: true,            // REQUIRED (HTTPS)
+  sameSite: "none",        // REQUIRED (cross-site)
+  domain: "dsportdb.online", // 🔥 EXACT API DOMAIN
+  path: "/",
+};
   res
     .status(200)
     .cookie("accessToken", accessToken, cookieOptions)

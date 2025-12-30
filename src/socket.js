@@ -3,17 +3,19 @@ import { Server } from "socket.io";
 let io;
 
 export const initSocket = (httpServer) => {
-  const allowedOrigins = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(",")
-    : ["http://localhost:5173", "http://localhost:3000"];
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(",")
+  : ["http://localhost:5173", "http://localhost:3000"];
 
-  io = new Server(httpServer, {
-    cors: {
-      origin: allowedOrigins,
-      credentials: true,
-      methods: ["GET", "POST"],
-    },
-  });
+io = new Server(httpServer, {
+  transports: ["websocket"], // 🔑 REQUIRED FOR VERCEL
+  cors: {
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ["GET", "POST"],
+  },
+});
+
 
   io.on("connection", (socket) => {
     console.log("✅ Socket connected:", socket.id);
