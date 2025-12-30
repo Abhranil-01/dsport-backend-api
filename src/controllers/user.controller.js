@@ -171,7 +171,7 @@ const cookieOptions = {
   httpOnly: true,
   secure: true,            // REQUIRED (HTTPS)
   sameSite: "none",        // REQUIRED (cross-site)
-  domain: "dsportdb.online", // 🔥 EXACT API DOMAIN
+  domain: "www.dsportdb.online", // 🔥 EXACT API DOMAIN
   path: "/",
 };
   res
@@ -207,7 +207,7 @@ const logoutUser = asyncHandler(async (req, res) => {
     httpOnly: true,
     secure: true,
     sameSite: "none",
-    domain: "dsportdb.online",
+    domain: "www.dsportdb.online",
     path: "/",
   };
 
