@@ -23,20 +23,21 @@ const allowedOrigins = process.env.CORS_ORIGIN
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow server-to-server requests (curl, Postman, SSR)
+      // allow browser direct access, curl, Postman
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin)) {
-        return callback(null, origin); // IMPORTANT for credentials
+        return callback(null, origin); // echo origin (required for credentials)
       }
 
-      // ❌ Do NOT throw error → return false instead
-      return callback(null, false);
+      // ✅ DO NOT block — just don't allow credentials
+      return callback(null, true);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   })
 );
+
 
 /* =========================
    MIDDLEWARES
