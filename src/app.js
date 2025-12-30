@@ -4,29 +4,34 @@ import cookieParser from "cookie-parser";
 
 const app = express();
 
-app.set("trust proxy", 1);
 /* =========================
-   SECURE CORS CONFIG
+   TRUST PROXY (IMPORTANT)
 ========================= */
+app.set("trust proxy", 1);
 
-
+/* =========================
+   CORS CONFIG
+========================= */
 
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",")
-  : [];
-
+  : [
+      "http://localhost:3000",
+      "http://localhost:5173",
+    ];
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow server-to-server, Postman, curl
+      // Allow server-to-server requests (curl, Postman, SSR)
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin)) {
-        return callback(null, origin); // 🔥 MUST return origin when credentials=true
+        return callback(null, origin); // IMPORTANT for credentials
       }
 
-      return callback(new Error(`CORS not allowed: ${origin}`));
+      // ❌ Do NOT throw error → return false instead
+      return callback(null, false);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -41,6 +46,17 @@ app.use(express.json({ limit: "50kb" }));
 app.use(express.urlencoded({ extended: true, limit: "50kb" }));
 app.use(express.static("public"));
 app.use(cookieParser());
+
+/* =========================
+   HEALTH / ROOT ROUTE (FIXES 500)
+========================= */
+
+app.get("/", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    message: "DSport Backend API is running 🚀",
+  });
+});
 
 /* =========================
    ROUTES
@@ -67,5 +83,29 @@ app.use("/api/v1/address", addressRouter);
 app.use("/api/v1/order", orderRouter);
 app.use("/api/v1/charges", chargesRouter);
 app.use("/api/v1", reviewRating);
+
+/* =========================
+   GLOBAL ERROR HANDLER
+========================= */
+
+app.use((err, req, res, next) => {
+  console.error("❌ Error:", err.message);
+
+  res.status(err.statusCode || 500).json({
+    success: false,
+    message: err.message || "Internal Server Error",
+  });
+});
+
+/* =========================
+   404 HANDLER
+========================= */
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+  });
+});
 
 export { app };
