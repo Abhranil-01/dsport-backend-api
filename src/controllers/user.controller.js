@@ -166,7 +166,7 @@ console.log("d",user.otp,cleanedOtp);
 
   const { accessToken, refreshToken } =
     await generateAccessTokenAndRefreshToken(user._id);
-    
+
 const cookieOptions = {
   httpOnly: true,
   secure: true,            // REQUIRED (HTTPS)
@@ -200,21 +200,24 @@ const logoutUser = asyncHandler(async (req, res) => {
         refreshToken: 1,
       },
     },
-    {
-      new: true,
-    }
+    { new: true }
   );
-  const options = {
+
+  const cookieOptions = {
     httpOnly: true,
     secure: true,
+    sameSite: "none",
+    domain: "dsportdb.online",
+    path: "/",
   };
 
   return res
     .status(200)
-    .clearCookie("accessToken", options)
-    .clearCookie("refreshToken", options)
+    .clearCookie("accessToken", cookieOptions)
+    .clearCookie("refreshToken", cookieOptions)
     .json(new ApiResponse(200, {}, "User logged Out Successfully"));
 });
+
 
 const refreshAccessToken = asyncHandler(async (req, res) => {
   const incomingToken = req.cookies.refreshToken || req.body.refreshToken;
