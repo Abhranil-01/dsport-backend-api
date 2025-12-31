@@ -166,13 +166,13 @@ console.log("d",user.otp,cleanedOtp);
 
   const { accessToken, refreshToken } =
     await generateAccessTokenAndRefreshToken(user._id);
-
+  const isProduction = process.env.NODE_ENV === "production";
 const cookieOptions = {
-  httpOnly: true,
-  secure: true,            // REQUIRED (HTTPS)
-  sameSite: "none",        // REQUIRED (cross-site)
-  domain: "www.dsportdb.online", // 🔥 EXACT API DOMAIN
-  path: "/",
+   httpOnly: true,
+    secure: isProduction,               // true only in production
+    sameSite: isProduction ? "none" : "lax",
+    domain: isProduction ? ".dsportdb.online" : undefined,
+    path: "/",
 };
   res
     .status(200)
@@ -195,19 +195,17 @@ const cookieOptions = {
 const logoutUser = asyncHandler(async (req, res) => {
   await User.findByIdAndUpdate(
     req.user._id,
-    {
-      $unset: {
-        refreshToken: 1,
-      },
-    },
+    { $unset: { refreshToken: 1 } },
     { new: true }
   );
 
+  const isProduction = process.env.NODE_ENV === "production";
+
   const cookieOptions = {
     httpOnly: true,
-    secure: true,
-    sameSite: "none",
-    domain: "www.dsportdb.online",
+    secure: isProduction,                 // true in production
+    sameSite: isProduction ? "none" : "lax",
+    domain: isProduction ? ".dsportdb.online" : undefined,
     path: "/",
   };
 
