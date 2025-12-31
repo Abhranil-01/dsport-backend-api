@@ -177,49 +177,51 @@ const updateSubCategory = asyncHandler(async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
-  let updatedSubCategory;
-  let imageToDeleteFromCloudinary = null;
-
   try {
-    /* ================= DELETE OLD IMAGE (DB ONLY) ================= */
-    if (subCategoryImageId) {
-      const imageDoc = await SubCategoryImage.findOne({
+    let newUploadedImage = null;
+    let oldImagePublicId = null;
+
+    /* ================= UPLOAD NEW IMAGE FIRST ================= */
+    if (req.file) {
+      newUploadedImage = await uploadFileOnCloudinary(req.file.path);
+      if (!newUploadedImage) {
+        throw new ApiError(400, "Image upload failed");
+      }
+    }
+
+    /* ================= DELETE OLD IMAGE (ONLY IF REPLACING) ================= */
+    if (subCategoryImageId && newUploadedImage) {
+      const oldImage = await SubCategoryImage.findOne({
         _id: subCategoryImageId,
         subCategoryId: id,
       }).session(session);
 
-      if (!imageDoc) {
-        throw new ApiError(404, "Image not found");
+      if (!oldImage) {
+        throw new ApiError(404, "Old image not found");
       }
 
-      imageToDeleteFromCloudinary = imageDoc.cloudinaryPublicId;
+      oldImagePublicId = oldImage.cloudinaryPublicId;
 
       await SubCategoryImage.deleteOne({
         _id: subCategoryImageId,
       }).session(session);
     }
 
-    /* ================= ADD NEW IMAGE ================= */
-    if (req.file) {
-      const uploaded = await uploadFileOnCloudinary(req.file.path);
-
-      if (!uploaded) {
-        throw new ApiError(400, "Image upload failed");
-      }
-
+    /* ================= SAVE NEW IMAGE ================= */
+    if (newUploadedImage) {
       await SubCategoryImage.create(
         [
           {
             subCategoryId: id,
-            url: uploaded.secure_url,
-            cloudinaryPublicId: uploaded.public_id,
+            url: newUploadedImage.secure_url,
+            cloudinaryPublicId: newUploadedImage.public_id,
           },
         ],
         { session }
       );
     }
 
-    /* ================= ENSURE IMAGE EXISTS ================= */
+    /* ================= ENSURE AT LEAST ONE IMAGE ================= */
     const imageExists = await SubCategoryImage.findOne({
       subCategoryId: id,
     }).session(session);
@@ -229,7 +231,7 @@ const updateSubCategory = asyncHandler(async (req, res) => {
     }
 
     /* ================= UPDATE SUBCATEGORY ================= */
-    updatedSubCategory = await ProductSubCategory.findByIdAndUpdate(
+    const updatedSubCategory = await ProductSubCategory.findByIdAndUpdate(
       id,
       {
         ...(subCategoryName && { subCategoryName }),
@@ -237,8 +239,8 @@ const updateSubCategory = asyncHandler(async (req, res) => {
       },
       {
         new: true,
-        session,
         runValidators: true,
+        session,
       }
     );
 
@@ -249,11 +251,9 @@ const updateSubCategory = asyncHandler(async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    /* ================= DELETE CLOUDINARY IMAGE (AFTER COMMIT) ================= */
-    if (imageToDeleteFromCloudinary) {
-      await destroyCloudinaryImage({
-        publicId: imageToDeleteFromCloudinary,
-      });
+    /* ================= DELETE CLOUDINARY IMAGE AFTER COMMIT ================= */
+    if (oldImagePublicId) {
+      await destroyCloudinaryImage({ publicId: oldImagePublicId });
     }
 
     /* ================= SOCKET ================= */
@@ -275,6 +275,7 @@ const updateSubCategory = asyncHandler(async (req, res) => {
     throw error;
   }
 });
+
 
 
 const getSubCategoryById = asyncHandler(async (req, res) => {
