@@ -8,7 +8,7 @@ const allowedOrigins = process.env.CORS_ORIGIN
   : ["http://localhost:5173", "http://localhost:3000"];
 
 io = new Server(httpServer, {
-  transports: ["websocket"], // 🔑 REQUIRED FOR VERCEL
+  transports: ["polling","websocket"], // 🔑 REQUIRED FOR VERCEL
   cors: {
     origin: allowedOrigins,
     credentials: true,
