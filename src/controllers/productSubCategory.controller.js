@@ -168,7 +168,7 @@ const getSubCategories = asyncHandler(async (req, res) => {
 
 const updateSubCategory = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { subCategoryName, categoryId, subCategoryImageId } = req.body;
+  const { subCategoryName, categoryId } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw new ApiError(400, "Invalid subcategory ID");
@@ -177,38 +177,38 @@ const updateSubCategory = asyncHandler(async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
+  let oldCloudinaryPublicIds = [];
+
   try {
     let newUploadedImage = null;
-    let oldImagePublicId = null;
 
     /* ================= UPLOAD NEW IMAGE FIRST ================= */
     if (req.file) {
       newUploadedImage = await uploadFileOnCloudinary(req.file.path);
+
       if (!newUploadedImage) {
         throw new ApiError(400, "Image upload failed");
       }
     }
 
-    /* ================= DELETE OLD IMAGE (ONLY IF REPLACING) ================= */
-    if (subCategoryImageId && newUploadedImage) {
-      const oldImage = await SubCategoryImage.findOne({
-        _id: subCategoryImageId,
+    /* ================= FORCE SINGLE IMAGE ================= */
+    if (newUploadedImage) {
+      // Find all old images
+      const oldImages = await SubCategoryImage.find({
         subCategoryId: id,
       }).session(session);
 
-      if (!oldImage) {
-        throw new ApiError(404, "Old image not found");
-      }
+      // Collect cloudinary IDs
+      oldCloudinaryPublicIds = oldImages.map(
+        (img) => img.cloudinaryPublicId
+      );
 
-      oldImagePublicId = oldImage.cloudinaryPublicId;
-
-      await SubCategoryImage.deleteOne({
-        _id: subCategoryImageId,
+      // Delete all old images from DB
+      await SubCategoryImage.deleteMany({
+        subCategoryId: id,
       }).session(session);
-    }
 
-    /* ================= SAVE NEW IMAGE ================= */
-    if (newUploadedImage) {
+      // Save new image
       await SubCategoryImage.create(
         [
           {
@@ -251,12 +251,12 @@ const updateSubCategory = asyncHandler(async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    /* ================= DELETE CLOUDINARY IMAGE AFTER COMMIT ================= */
-    if (oldImagePublicId) {
-      await destroyCloudinaryImage({ publicId: oldImagePublicId });
+    /* ================= DELETE CLOUDINARY IMAGES AFTER COMMIT ================= */
+    for (const publicId of oldCloudinaryPublicIds) {
+      await destroyCloudinaryImage({ publicId });
     }
 
-    /* ================= SOCKET ================= */
+    /* ================= SOCKET EVENT ================= */
     getIO().emit("SUBCATEGORY_UPDATED", {
       categoryId: updatedSubCategory.categoryId.toString(),
       subCategoryId: updatedSubCategory._id.toString(),
@@ -275,6 +275,7 @@ const updateSubCategory = asyncHandler(async (req, res) => {
     throw error;
   }
 });
+
 
 
 
