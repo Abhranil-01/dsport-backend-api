@@ -168,104 +168,114 @@ const getSubCategories = asyncHandler(async (req, res) => {
 
 const updateSubCategory = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  let { subCategoryName, subCategoryImageId, categoryId } = req.body;
+  const { subCategoryName, categoryId, subCategoryImageId } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
-    return res.status(400).json({ error: "Invalid category ID" });
+    throw new ApiError(400, "Invalid subcategory ID");
   }
 
   const session = await mongoose.startSession();
   session.startTransaction();
-  console.log("subimgaeid", subCategoryImageId);
+
+  let updatedSubCategory;
+  let imageToDeleteFromCloudinary = null;
 
   try {
+    /* ================= DELETE OLD IMAGE (DB ONLY) ================= */
     if (subCategoryImageId) {
-      const foundDocs = await SubCategoryImage.findOne({
+      const imageDoc = await SubCategoryImage.findOne({
         _id: subCategoryImageId,
-      });
-
-      if (!foundDocs) {
-        console.log("No matching documents found");
-      } else {
-        console.log("Found documents:", foundDocs);
-        await destroyCloudinaryImage({
-          publicId: foundDocs.cloudinaryPublicId,
-        });
-        // 2. Delete the found documents
-        const deleteResult = await SubCategoryImage.deleteMany({
-          _id: subCategoryImageId,
-        }).session(session);
-        console.log("Deleted count:", deleteResult.deletedCount);
-      }
-    }
-
-    if (req.file) {
-      console.log("Uploading file:", req.file.path);
-      const uploadedImage = await uploadFileOnCloudinary(req.file.path);
-      if (!uploadedImage) {
-        await session.abortTransaction();
-
-        session.endSession();
-        return res
-          .status(400)
-          .json(new ApiError(400, null, "Image is required for category"));
-      }
-      const newImage = new SubCategoryImage({
         subCategoryId: id,
-        url: uploadedImage.secure_url,
-        cloudinaryPublicId: uploadedImage.public_id,
-      });
-      await newImage.save({ session });
+      }).session(session);
+
+      if (!imageDoc) {
+        throw new ApiError(404, "Image not found");
+      }
+
+      imageToDeleteFromCloudinary = imageDoc.cloudinaryPublicId;
+
+      await SubCategoryImage.deleteOne({
+        _id: subCategoryImageId,
+      }).session(session);
     }
 
-    const checkImageAvailability = await SubCategoryImage.findOne({
+    /* ================= ADD NEW IMAGE ================= */
+    if (req.file) {
+      const uploaded = await uploadFileOnCloudinary(req.file.path);
+
+      if (!uploaded) {
+        throw new ApiError(400, "Image upload failed");
+      }
+
+      await SubCategoryImage.create(
+        [
+          {
+            subCategoryId: id,
+            url: uploaded.secure_url,
+            cloudinaryPublicId: uploaded.public_id,
+          },
+        ],
+        { session }
+      );
+    }
+
+    /* ================= ENSURE IMAGE EXISTS ================= */
+    const imageExists = await SubCategoryImage.findOne({
       subCategoryId: id,
     }).session(session);
-    if (!checkImageAvailability) {
-      await session.abortTransaction();
-      session.endSession();
-      return res
-        .status(400)
-        .json(
-          new ApiError(400, null, "Image is required for subcategory category")
-        );
-    }
-    let subCategory;
-    if (subCategoryName || categoryId) {
-      subCategory = await ProductSubCategory.findByIdAndUpdate(
-        id,
-        { subCategoryName, categoryId }, // Wrap in an object
-        {
-          new: true,
-          session,
-          runValidators: true,
-        }
-      ).session(session);
 
-      if (!subCategory) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(404).json({ error: "Sub Category not found" });
+    if (!imageExists) {
+      throw new ApiError(400, "At least one image is required");
+    }
+
+    /* ================= UPDATE SUBCATEGORY ================= */
+    updatedSubCategory = await ProductSubCategory.findByIdAndUpdate(
+      id,
+      {
+        ...(subCategoryName && { subCategoryName }),
+        ...(categoryId && { categoryId }),
+      },
+      {
+        new: true,
+        session,
+        runValidators: true,
       }
+    );
+
+    if (!updatedSubCategory) {
+      throw new ApiError(404, "Subcategory not found");
     }
 
     await session.commitTransaction();
     session.endSession();
+
+    /* ================= DELETE CLOUDINARY IMAGE (AFTER COMMIT) ================= */
+    if (imageToDeleteFromCloudinary) {
+      await destroyCloudinaryImage({
+        publicId: imageToDeleteFromCloudinary,
+      });
+    }
+
+    /* ================= SOCKET ================= */
     getIO().emit("SUBCATEGORY_UPDATED", {
-      categoryId: subCategory.categoryId.toString(),
-      subCategoryId: subCategory._id.toString(),
+      categoryId: updatedSubCategory.categoryId.toString(),
+      subCategoryId: updatedSubCategory._id.toString(),
     });
-    return res
-      .status(200)
-      .json(
-        new ApiResponse(200, subCategory, "Sub category updated successfully")
-      );
+
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        updatedSubCategory,
+        "Subcategory updated successfully"
+      )
+    );
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    return res.status(500).json(ApiError(500, error.message));
+    throw error;
   }
 });
+
 
 const getSubCategoryById = asyncHandler(async (req, res) => {
   const { id } = req.params;
