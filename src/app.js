@@ -75,7 +75,7 @@ import chargesRouter from "./routes/charges.routes.js";
 import reviewRating from "./routes/reviewRating.routes.js";
 
 app.use("/api/v1/users", userRouter);
-app.use("/api/v1/admin", adminRouter);
+app.use("/api/v1", adminRouter);
 app.use("/api/v1", categoryRouter);
 app.use("/api/v1", subCategoryRouter);
 app.use("/api/v1", productRouter);
