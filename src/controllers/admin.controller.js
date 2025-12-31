@@ -80,7 +80,6 @@ export const createAdminBySuperAdmin = asyncHandler(async (req, res) => {
 /* LOGIN */
 export const loginAdmin = asyncHandler(async (req, res) => {
   const { identifier, password } = req.body;
-console.log("jjo");
 
   if (!identifier || !password) {
     throw new ApiError(400, "All fields are required");
@@ -101,19 +100,28 @@ console.log("jjo");
   admin.refreshToken = refreshToken;
   await admin.save({ validateBeforeSave: false });
 
+  const isProduction = process.env.NODE_ENV === "production";
+
+  const cookieOptions = {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+    domain: isProduction ? ".dsportdb.online" : undefined,
+    path: "/",
+  };
+
   res
-    // .cookie("adminAccessToken", accessToken, {
-    //   httpOnly: true,
-    //   secure: true,
-    //   sameSite: "strict",
-    // })
-    // .cookie("adminRefreshToken", refreshToken, {
-    //   httpOnly: true,
-    //   secure: true,
-    //   sameSite: "strict",
-    // })
-    .json(new ApiResponse(200, {admin,accessToken,refreshToken}, "Admin logged in"));
+    .cookie("adminAccessToken", accessToken, cookieOptions)
+    .cookie("adminRefreshToken", refreshToken, cookieOptions)
+    .json(
+      new ApiResponse(
+        200,
+        { admin, accessToken, refreshToken },
+        "Admin logged in"
+      )
+    );
 });
+
 
 
 /* LOGOUT */
@@ -122,9 +130,19 @@ export const logoutAdmin = asyncHandler(async (req, res) => {
     $unset: { refreshToken: 1 },
   });
 
+  const isProduction = process.env.NODE_ENV === "production";
+
+  const cookieOptions = {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+    domain: isProduction ? ".dsportdb.online" : undefined,
+    path: "/",
+  };
+
   res
-    .clearCookie("adminAccessToken")
-    .clearCookie("adminRefreshToken")
+    .clearCookie("adminAccessToken", cookieOptions)
+    .clearCookie("adminRefreshToken", cookieOptions)
     .json(new ApiResponse(200, {}, "Admin logged out"));
 });
 
