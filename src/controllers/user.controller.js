@@ -5,7 +5,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
 import otpGenerator from "otp-generator";
 import { sendEmail } from "../utils/sendEmail.js";
-import { otpEmailTemplate } from "../utils/otpEmailTemplate.js";
+import {  otpEmailLoginTemplate, registerOtpEmailTemplate, resendOtpEmailTemplate } from "../utils/otpEmailTemplate.js";
 const generateAccessTokenAndRefreshToken = async (userId) => {
   try {
     const user = await User.findById(userId);
@@ -78,11 +78,10 @@ const userRegister = asyncHandler(async (req, res) => {
   }
 
   // Send OTP email
-  await transporter.sendMail({
-    from: process.env.SMTP_MAIL,
+  await sendEmail({
     to: email,
-    subject: "OTP for Registration",
-    text: `Your OTP is ${otp}. Valid for 5 minutes.`,
+    subject: "OTP for Register",
+    html: registerOtpEmailTemplate(otp),
   });
 
   res
@@ -132,7 +131,7 @@ const loginUser = asyncHandler(async (req, res) => {
   await sendEmail({
     to: email,
     subject: "OTP for Login",
-    html: otpEmailTemplate(otp),
+    html: otpEmailLoginTemplate(otp),
   });
 
   res.status(200).json(new ApiResponse(200, {}, "OTP sent successfully"));
@@ -279,7 +278,7 @@ const resendOtp = asyncHandler(async (req, res) => {
  await sendEmail({
     to: email,
     subject: "OTP for Login",
-    html: otpEmailTemplate(otp),
+    html: resendOtpEmailTemplate(otp),
   });
   return res
     .status(200)

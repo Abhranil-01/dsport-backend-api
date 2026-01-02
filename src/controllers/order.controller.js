@@ -27,6 +27,7 @@ import {
   paymentStatusEmail,
   deliveryStatusEmail,
   orderCancelledEmail,
+  invoiceEmailTemplate,
 } from "../utils/orderEmails.js";
 
 // Fix __dirname for ES Modules
@@ -74,65 +75,145 @@ const INVOICE_DIR = "/tmp/invoices";
 fse.ensureDirSync(INVOICE_DIR);
 
 // Generate invoice PDF (returns { invoicePath, invoiceFileName })
-async function generateInvoicePdf(
-  orderDoc,
-  userDoc,
-  addressDoc,
-  invoiceVersion = 1
-) {
-  const invoiceNumber = `INV-${orderDoc._id}-V${invoiceVersion}`;
-  const invoiceFileName = `${invoiceNumber}.pdf`;
-  const invoicePath = path.join(INVOICE_DIR, invoiceFileName);
 
-  return new Promise((resolve, reject) => {
-    try {
-      const doc = new PDFDocument({ size: "A4", margin: 25 });
-      const stream = fs.createWriteStream(invoicePath);
+export const generateInvoicePdf = async (order, user, address) => {
+  /* ================= FETCH ORDER ITEMS ================= */
+  const orderItems = await OrderItem.find({ orderId: order._id })
+    .populate({
+      path: "productColorItem",
+      populate: { path: "productId" },
+    })
+    .populate("sizeId");
 
-      if (fs.existsSync(FONT_PATH)) {
-        doc.registerFont("Noto", FONT_PATH);
-        doc.font("Noto");
-      }
+  const invoiceDir = path.join(process.cwd(), "invoices");
+  await fs.ensureDir(invoiceDir);
 
-      doc.pipe(stream);
+  const invoicePath = path.join(invoiceDir, `Invoice_${order._id}.pdf`);
 
-      doc.fontSize(16).text("TAX INVOICE");
-      doc.moveDown();
+  /* ================= CREATE PDF ================= */
+  const doc = new PDFDocument({ size: "A4", margin: 40 });
+  const stream = fs.createWriteStream(invoicePath);
+  doc.pipe(stream);
 
-      doc.fontSize(10).text(`Invoice No: ${invoiceNumber}`);
-      doc.text(`Order ID: ${orderDoc._id}`);
-      doc.text(`Date: ${new Date().toLocaleDateString()}`);
-      doc.moveDown();
+  /* ================= HEADER ================= */
+  doc
+    .fontSize(22)
+    .fillColor("#0d6efd")
+    .text("Dsport", { align: "left" })
+    .fontSize(10)
+    .fillColor("gray")
+    .text("All Sports. One Store.")
+    .moveDown();
 
-      doc.text(`Customer: ${addressDoc?.name}`);
-      doc.text(`Email: ${userDoc?.email}`);
-      doc.text(`Address: ${addressDoc?.address}`);
-      doc.moveDown();
+  doc
+    .fontSize(12)
+    .fillColor("black")
+    .text(`Invoice ID: ${order._id}`, { align: "right" })
+    .text(`Date: ${new Date(order.createdAt).toLocaleDateString()}`, {
+      align: "right",
+    })
+    .text(`Payment Mode: ${order.paymentMode}`, { align: "right" })
+    .text(`Payment Status: ${order.paymentStatus}`, { align: "right" });
 
-      doc.text("Items:");
-      doc.moveDown(0.5);
+  doc.moveDown(2);
 
-      orderDoc.items.forEach((item, idx) => {
-        doc.text(`${idx + 1}. Qty ${item.quantity}  ₹${item.price.toFixed(2)}`);
-      });
+  /* ================= BILLING ================= */
+  doc
+    .fontSize(12)
+    .fillColor("#0d6efd")
+    .text("Billing & Shipping Details")
+    .moveDown(0.5);
 
-      doc.moveDown();
-      doc.text(`Total Payable: ₹${orderDoc.totalPayableAmount}`);
+  doc
+    .fontSize(10)
+    .fillColor("black")
+    .text(address.name)
+    .text(address.address)
+    .text(`${address.city}, ${address.state} - ${address.pincode}`)
+    .text(address.country)
+    .text(`Phone: ${address.phone}`)
+    .text(`Email: ${address.email || user.email}`);
 
-      doc.end();
+  doc.moveDown(2);
 
-      stream.on("finish", () =>
-        resolve({
-          invoicePath,
-          invoiceFileName,
-          invoiceNumber,
-        })
-      );
-    } catch (err) {
-      reject(err);
-    }
+  /* ================= TABLE HEADER ================= */
+  const tableTop = doc.y;
+  const col = {
+    sn: 40,
+    name: 70,
+    color: 260,
+    size: 330,
+    qty: 390,
+    price: 450,
+  };
+
+  doc
+    .fontSize(10)
+    .text("#", col.sn, tableTop)
+    .text("Product", col.name, tableTop)
+    .text("Color", col.color, tableTop)
+    .text("Size", col.size, tableTop)
+    .text("Qty", col.qty, tableTop)
+    .text("Price", col.price, tableTop);
+
+  doc
+    .moveTo(40, tableTop + 15)
+    .lineTo(550, tableTop + 15)
+    .stroke();
+
+  /* ================= TABLE ROWS ================= */
+  let position = tableTop + 25;
+
+  orderItems.forEach((item, index) => {
+    doc
+      .fontSize(10)
+      .text(index + 1, col.sn, position)
+      .text(item.productColorItem.productId.productName, col.name, position, {
+        width: 180,
+      })
+      .text(item.productColorItem.color, col.color, position)
+      .text(item.sizeId.size || "Default", col.size, position)
+      .text(item.quantity, col.qty, position)
+      .text(`₹${item.price}`, col.price, position);
+
+    position += 20;
   });
-}
+
+  doc.moveDown(3);
+
+  /* ================= SUMMARY ================= */
+  doc
+    .fontSize(10)
+    .text(`Subtotal: ₹${order.totalPrice}`, { align: "right" })
+    .text(`Discount: -₹${order.discountPrice}`, { align: "right" })
+    .text(`Tax: ₹${order.tax}`, { align: "right" })
+    .text(`Delivery: ₹${order.deliveryCharge}`, { align: "right" })
+    .text(`Handling: ₹${order.handlingCharge}`, { align: "right" })
+    .moveDown(0.5)
+    .fontSize(12)
+    .text(`Total Payable: ₹${order.totalPayableAmount}`, {
+      align: "right",
+    });
+
+  /* ================= FOOTER ================= */
+  doc.moveDown(3);
+  doc
+    .fontSize(9)
+    .fillColor("gray")
+    .text("This is a system generated invoice. No signature required.", {
+      align: "center",
+    })
+    .text(`© ${new Date().getFullYear()} Dsport. All rights reserved.`, {
+      align: "center",
+    });
+
+  doc.end();
+
+  /* ================= WAIT FOR FILE ================= */
+  await new Promise((resolve) => stream.on("finish", resolve));
+
+  return { invoicePath };
+};
 
 // Helper to send invoice email
 async function sendInvoiceEmail(
@@ -140,26 +221,20 @@ async function sendInvoiceEmail(
   subject,
   text,
   attachmentPath,
-  attachmentName
+  attachmentName,
+  html
 ) {
   const emailList = Array.isArray(toEmail) ? toEmail : [toEmail];
   const uniqueEmails = [...new Set(emailList)];
 
   for (const email of uniqueEmails) {
     const mailOptions = {
-      from: process.env.SMTP_MAIL,
+      from: `"Dsport" <${process.env.SMTP_USER}>`,
       to: email,
       subject:
-        subject || "Invoice from " + (process.env.STORE_NAME || "Your Store"),
+        subject || "Invoice from " + (process.env.STORE_NAME || "Dsport"),
       text: text || "Please find your invoice.",
-      html: `
-        <p>Thank you for shopping with us!</p>
-        ${
-          attachmentPath?.startsWith("http")
-            ? `<p><a href="${attachmentPath}" target="_blank">Download Invoice</a></p>`
-            : `<p>Your invoice PDF is attached.</p>`
-        }
-      `,
+      html: html,
       attachments:
         attachmentPath && !attachmentPath.startsWith("http")
           ? [{ filename: attachmentName, path: attachmentPath }]
@@ -173,25 +248,24 @@ async function sendInvoiceEmail(
   return { sentTo: uniqueEmails };
 }
 
-
 export const createOrderCOD = asyncHandler(async (req, res) => {
   const { cartItemIds, addressId, chargesId } = req.body;
 
-  if (!cartItemIds || !cartItemIds.length) {
+  if (!Array.isArray(cartItemIds) || cartItemIds.length === 0) {
     throw new ApiError(400, "Cart items are required");
   }
 
   const session = await mongoose.startSession();
 
   let createdOrder;
-  let address;
+  let addressSnapshot;
   let charges;
 
   try {
     /* ================= TRANSACTION ================= */
     await session.withTransaction(async () => {
       /* 1️⃣ Validate Address */
-      address = await Address.findOne({
+      const address = await Address.findOne({
         _id: addressId,
         user: req.user._id,
       }).session(session);
@@ -199,6 +273,8 @@ export const createOrderCOD = asyncHandler(async (req, res) => {
       if (!address) {
         throw new ApiError(404, "Address not found");
       }
+
+      addressSnapshot = address.toObject(); // ✅ SAFE COPY
 
       /* 2️⃣ Fetch Cart Items */
       const cartItems = await AddToCart.find({
@@ -255,7 +331,7 @@ export const createOrderCOD = asyncHandler(async (req, res) => {
             addressId,
 
             totalQuantity: charges.totalQuantity,
-            totalPrice: charges.totalPrice,
+            totalPrice: charges.totalPrice, // gross
             discountPrice: charges.discountPrice,
             tax: charges.tax,
             deliveryCharge: charges.deliveryCharge,
@@ -299,72 +375,77 @@ export const createOrderCOD = asyncHandler(async (req, res) => {
       );
     });
 
-    session.endSession();
+    /* ================= SOCKET EVENTS ================= */
+    try {
+      const io = getIO();
 
-    /* ================= SOCKET (IMMEDIATE & SAFE) ================= */
-    const io = getIO();
+      const payload = {
+        orderId: createdOrder._id.toString(),
+        orderStatus: createdOrder.orderStatus,
+        deliveryStatus: createdOrder.deliveryStatus,
+        paymentStatus: createdOrder.paymentStatus,
+      };
 
-    const payload = {
-      orderId: createdOrder._id.toString(),
-      orderStatus: createdOrder.orderStatus,
-      deliveryStatus: createdOrder.deliveryStatus,
-      paymentStatus: createdOrder.paymentStatus,
-    };
-
-    // ADMIN
-    io.to("ADMIN").emit("ORDER_CREATED", payload);
-
-    // USER
-    io.to(`USER_${req.user._id.toString()}`).emit("ORDER_CREATED", payload);
+      io.to("ADMIN").emit("ORDER_CREATED", payload);
+      io.to(`USER_${req.user._id.toString()}`).emit("ORDER_CREATED", payload);
+    } catch (socketErr) {
+      console.error("Socket emit failed:", socketErr.message);
+    }
 
     /* ================= RESPONSE ================= */
     res
       .status(201)
-      .json(new ApiResponse(201, createdOrder, "COD order placed successfully"));
+      .json(
+        new ApiResponse(201, createdOrder, "COD order placed successfully")
+      );
 
     /* ================= HEAVY ASYNC JOBS ================= */
     process.nextTick(async () => {
       try {
-        const orderItems = await OrderItem.find({
-          orderId: createdOrder._id,
-        });
-
         const invoiceResult = await generateInvoicePdf(
-          { ...createdOrder.toObject(), items: orderItems },
+          createdOrder,
           req.user,
-          address,
-          1
+          addressSnapshot
         );
 
-        const emails = [req.user.email, address.email].filter(Boolean);
+        const emails = [req.user.email, addressSnapshot.email].filter(Boolean);
 
         await sendInvoiceEmail(
           emails,
           `Your Invoice - Order ${createdOrder._id}`,
           null,
           invoiceResult.invoicePath,
-          `Invoice_${createdOrder._id}.pdf`
+          `Invoice_${createdOrder._id}.pdf`,
+          invoiceEmailTemplate({
+            orderId: createdOrder._id,
+            orderDate: new Date(createdOrder.createdAt).toLocaleDateString(),
+            totalAmount: createdOrder.totalPayableAmount,
+          })
         );
 
         uploadInvoiceOnCloudinary(invoiceResult.invoicePath)
-          .then((res) => {
-            if (res?.secure_url) {
-              createdOrder.invoiceUrl = res.secure_url;
-              createdOrder.save();
+          .then(async (uploadRes) => {
+            if (uploadRes?.secure_url) {
+              createdOrder.invoiceUrl = uploadRes.secure_url;
+              await createdOrder.save();
             }
+            await fs.remove(invoiceResult.invoicePath); // ✅ cleanup
           })
           .catch(() => {});
       } catch (err) {
-        console.error("Post-order async failed:", err.message);
+        console.error(
+          "Post-order async failed:",
+          err.message,
+          createdOrder?._id
+        );
       }
     });
   } catch (err) {
-    session.endSession();
     throw err instanceof ApiError ? err : new ApiError(500, err.message);
+  } finally {
+    session.endSession();
   }
 });
-
-
 
 
 export const createRazorpayOrder = asyncHandler(async (req, res) => {
@@ -394,7 +475,6 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
   );
 });
 
-
 export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
   const {
     razorpay_order_id,
@@ -405,11 +485,15 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
     chargesId,
   } = req.body;
 
-  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+  if (
+    !razorpay_order_id ||
+    !razorpay_payment_id ||
+    !razorpay_signature
+  ) {
     throw new ApiError(400, "Missing Razorpay fields");
   }
 
-  /* 1️⃣ Verify Razorpay Signature */
+  /* ================= VERIFY RAZORPAY SIGNATURE ================= */
   const secret =
     process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET;
 
@@ -426,22 +510,25 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
   const session = await mongoose.startSession();
 
   let createdOrder;
-  let shippingAddress;
+  let addressSnapshot;
   let charges;
 
   try {
+    /* ================= TRANSACTION ================= */
     await session.withTransaction(async () => {
-      /* 2️⃣ Address */
-      shippingAddress = await Address.findOne({
+      /* 1️⃣ Address */
+      const address = await Address.findOne({
         _id: addressId,
         user: req.user._id,
       }).session(session);
 
-      if (!shippingAddress) {
+      if (!address) {
         throw new ApiError(404, "Address not found");
       }
 
-      /* 3️⃣ Cart Items */
+      addressSnapshot = address.toObject(); // ✅ SAFE COPY
+
+      /* 2️⃣ Cart Items */
       const cartItems = await AddToCart.find({
         _id: { $in: cartItemIds },
         userId: req.user._id,
@@ -451,7 +538,7 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Some cart items not found");
       }
 
-      /* 4️⃣ Validate Stock */
+      /* 3️⃣ Validate Stock */
       for (const item of cartItems) {
         const stockDoc = await ProductPriceAndSizeAndStock.findById(
           item.productPriceAndSizeAndStockId
@@ -462,7 +549,7 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
         }
       }
 
-      /* 5️⃣ Deduct Stock */
+      /* 4️⃣ Deduct Stock */
       for (const item of cartItems) {
         const updated = await ProductPriceAndSizeAndStock.updateOne(
           {
@@ -478,7 +565,7 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
         }
       }
 
-      /* 6️⃣ Charges */
+      /* 5️⃣ Charges */
       charges = await Charges.findOne({
         _id: chargesId,
         userId: req.user._id,
@@ -488,7 +575,7 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Invalid charges data");
       }
 
-      /* 7️⃣ Create Order */
+      /* 6️⃣ Create Order */
       const [order] = await Order.create(
         [
           {
@@ -496,7 +583,7 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
             addressId,
 
             totalQuantity: charges.totalQuantity,
-            totalPrice: charges.totalPrice,
+            totalPrice: charges.totalPrice, // gross
             discountPrice: charges.discountPrice,
             tax: charges.tax,
             deliveryCharge: charges.deliveryCharge,
@@ -516,7 +603,7 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
 
       createdOrder = order;
 
-      /* 8️⃣ Order Items */
+      /* 7️⃣ Order Items */
       const orderItemsData = cartItems.map((item) => ({
         orderId: createdOrder._id,
         productColorItem: item.productcolorwiseitemId,
@@ -527,54 +614,51 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
 
       await OrderItem.insertMany(orderItemsData, { session });
 
-      /* 9️⃣ Clear Cart */
+      /* 8️⃣ Clear Cart */
       await AddToCart.deleteMany(
         { _id: { $in: cartItemIds }, userId: req.user._id },
         { session }
       );
 
-      /* 🔟 Remove Charges */
+      /* 9️⃣ Remove Charges */
       await Charges.deleteOne(
         { _id: charges._id, userId: req.user._id },
         { session }
       );
     });
 
-    session.endSession();
+    /* ================= SOCKET EVENTS ================= */
+    try {
+      const io = getIO();
 
-    /* 🔔 SOCKET + INVOICE (NON-BLOCKING) */
+      const payload = {
+        orderId: createdOrder._id.toString(),
+        orderStatus: createdOrder.orderStatus,
+        deliveryStatus: createdOrder.deliveryStatus,
+        paymentStatus: createdOrder.paymentStatus,
+      };
+
+      io.to("ADMIN").emit("ORDER_CREATED", payload);
+      io.to(`USER_${req.user._id.toString()}`).emit("ORDER_CREATED", payload);
+    } catch (socketErr) {
+      console.error("Socket emit failed:", socketErr.message);
+    }
+
+    /* ================= RESPONSE ================= */
+    res.status(200).json(
+      new ApiResponse(200, createdOrder, "Payment verified & order placed")
+    );
+
+    /* ================= HEAVY ASYNC JOBS ================= */
     process.nextTick(async () => {
       try {
-        const io = getIO();
-
-        const payload = {
-          orderId: createdOrder._id.toString(),
-          orderStatus: createdOrder.orderStatus,
-          deliveryStatus: createdOrder.deliveryStatus,
-          paymentStatus: createdOrder.paymentStatus,
-        };
-
-        /* ADMIN */
-        io.to("ADMIN").emit("ORDER_CREATED", payload);
-
-        /* USER (matches frontend hook) */
-        io
-          .to(`USER_${req.user._id}`)
-          .emit("ORDER_UPDATED", payload);
-
-        /* INVOICE */
-        const orderItems = await OrderItem.find({
-          orderId: createdOrder._id,
-        });
-
         const invoiceResult = await generateInvoicePdf(
-          { ...createdOrder.toObject(), items: orderItems },
+          createdOrder,
           req.user,
-          shippingAddress,
-          1
+          addressSnapshot
         );
 
-        const emails = [req.user.email, shippingAddress.email].filter(Boolean);
+        const emails = [req.user.email, addressSnapshot.email].filter(Boolean);
 
         await sendInvoiceEmail(
           emails,
@@ -585,26 +669,26 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
         );
 
         uploadInvoiceOnCloudinary(invoiceResult.invoicePath)
-          .then((res) => {
-            if (res?.secure_url) {
-              createdOrder.invoiceUrl = res.secure_url;
-              createdOrder.save();
+          .then(async (uploadRes) => {
+            if (uploadRes?.secure_url) {
+              createdOrder.invoiceUrl = uploadRes.secure_url;
+              await createdOrder.save();
             }
+            await fs.remove(invoiceResult.invoicePath); // ✅ cleanup
           })
           .catch(() => {});
       } catch (err) {
-        console.error("Post-order process failed:", err.message);
+        console.error(
+          "Post-order async failed:",
+          err.message,
+          createdOrder?._id
+        );
       }
     });
-
-    return res
-      .status(200)
-      .json(
-        new ApiResponse(200, createdOrder, "Payment verified & order placed")
-      );
   } catch (err) {
-    session.endSession();
     throw err instanceof ApiError ? err : new ApiError(500, err.message);
+  } finally {
+    session.endSession();
   }
 });
 
@@ -631,8 +715,6 @@ export const verifyPayment = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, null, "Signature valid"));
 });
 
-
-
 export const updateOrder = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { deliveryStatus, paymentStatus } = req.body;
@@ -644,9 +726,7 @@ export const updateOrder = asyncHandler(async (req, res) => {
   try {
     session.startTransaction();
 
-    order = await Order.findById(id)
-      .populate("user", "email")
-      .session(session);
+    order = await Order.findById(id).populate("user", "email").session(session);
 
     if (!order) {
       throw new ApiError(404, "Order not found");
@@ -749,7 +829,6 @@ export const updateOrder = asyncHandler(async (req, res) => {
     }
   });
 });
-
 
 export const getAllOrders = asyncHandler(async (req, res) => {
   const orders = await Order.aggregate([
@@ -1149,7 +1228,6 @@ export const getOrderByIdForAdmin = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(200, orders[0], "Admin order fetched successfully"));
 });
-
 
 export const getOrderById = asyncHandler(async (req, res) => {
   const orders = await Order.aggregate([
