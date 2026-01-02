@@ -3,8 +3,9 @@ import { ApiError } from "../utils/ApiError.js";
 import { User } from "../models/user.model.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
-import nodemailer from "nodemailer";
 import otpGenerator from "otp-generator";
+import { sendEmail } from "../utils/sendEmail.js";
+import { otpEmailTemplate } from "../utils/otpEmailTemplate.js";
 const generateAccessTokenAndRefreshToken = async (userId) => {
   try {
     const user = await User.findById(userId);
@@ -28,15 +29,15 @@ const generateAccessTokenAndRefreshToken = async (userId) => {
   }
 };
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,
-  secure: false, // true for port 465, false for other ports
-  auth: {
-    user: process.env.SMTP_MAIL,
-    pass: process.env.SMTP_PASSWORD,
-  },
-});
+// const transporter = nodemailer.createTransport({
+//   host: process.env.SMTP_HOST,
+//   port: process.env.SMTP_PORT,
+//   secure: false, // true for port 465, false for other ports
+//   auth: {
+//     user: process.env.SMTP_MAIL,
+//     pass: process.env.SMTP_PASSWORD,
+//   },
+// });
 const userRegister = asyncHandler(async (req, res) => {
   const { fullname, email } = req.body;
 
@@ -86,7 +87,9 @@ const userRegister = asyncHandler(async (req, res) => {
 
   res
     .status(201)
-    .json(new ApiResponse(201, {}, "OTP sent. Verify to complete registration."));
+    .json(
+      new ApiResponse(201, {}, "OTP sent. Verify to complete registration.")
+    );
 });
 
 const getUser = asyncHandler(async (req, res) => {
@@ -123,19 +126,17 @@ const loginUser = asyncHandler(async (req, res) => {
   });
 
   user.otp = otp;
-  user.otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
+  user.otpExpiry = new Date(Date.now() + 2 * 60 * 1000);
   await user.save();
 
-  await transporter.sendMail({
-    from: process.env.SMTP_MAIL,
+  await sendEmail({
     to: email,
     subject: "OTP for Login",
-    text: `Your OTP is ${otp}.`,
+    html: otpEmailTemplate(otp),
   });
 
   res.status(200).json(new ApiResponse(200, {}, "OTP sent successfully"));
 });
-
 
 const verifyOtp = asyncHandler(async (req, res) => {
   const { email, otp } = req.body;
@@ -143,13 +144,13 @@ const verifyOtp = asyncHandler(async (req, res) => {
   if (!email || !otp) {
     throw new ApiError(400, "Email and OTP are required");
   }
-console.log("f",otp);
+  console.log("f", otp);
 
   const user = await User.findOne({ email });
   if (!user) throw new ApiError(404, "User not found");
 
   const cleanedOtp = otp.trim();
-console.log("d",user.otp,cleanedOtp);
+  console.log("d", user.otp, cleanedOtp);
 
   if (user.otp !== cleanedOtp) {
     throw new ApiError(400, "Invalid OTP");
@@ -167,13 +168,13 @@ console.log("d",user.otp,cleanedOtp);
   const { accessToken, refreshToken } =
     await generateAccessTokenAndRefreshToken(user._id);
   const isProduction = process.env.NODE_ENV === "production";
-const cookieOptions = {
-   httpOnly: true,
-    secure: isProduction,               // true only in production
+  const cookieOptions = {
+    httpOnly: true,
+    secure: isProduction, // true only in production
     sameSite: isProduction ? "none" : "lax",
     domain: isProduction ? ".dsportdb.online" : undefined,
     path: "/",
-};
+  };
   res
     .status(200)
     .cookie("accessToken", accessToken, cookieOptions)
@@ -187,11 +188,6 @@ const cookieOptions = {
     );
 });
 
-
-
-
-
-
 const logoutUser = asyncHandler(async (req, res) => {
   await User.findByIdAndUpdate(
     req.user._id,
@@ -203,7 +199,7 @@ const logoutUser = asyncHandler(async (req, res) => {
 
   const cookieOptions = {
     httpOnly: true,
-    secure: isProduction,                 // true in production
+    secure: isProduction, // true in production
     sameSite: isProduction ? "none" : "lax",
     domain: isProduction ? ".dsportdb.online" : undefined,
     path: "/",
@@ -215,7 +211,6 @@ const logoutUser = asyncHandler(async (req, res) => {
     .clearCookie("refreshToken", cookieOptions)
     .json(new ApiResponse(200, {}, "User logged Out Successfully"));
 });
-
 
 const refreshAccessToken = asyncHandler(async (req, res) => {
   const incomingToken = req.cookies.refreshToken || req.body.refreshToken;
@@ -280,17 +275,12 @@ const resendOtp = asyncHandler(async (req, res) => {
   user.otpExpiry = Date.now() + 5 * 60 * 1000; // 5 min expiry
   await user.save();
 
-  const mailOptions = {
-    from: process.env.SMTP_MAIL,
+
+ await sendEmail({
     to: email,
-    subject: "Your OTP",
-    text: `Your new OTP is ${otp}. It is valid for 5 minutes.`,
-  };
-
-  transporter.sendMail(mailOptions, (err) => {
-    if (err) console.log("Resend OTP email error:", err);
+    subject: "OTP for Login",
+    html: otpEmailTemplate(otp),
   });
-
   return res
     .status(200)
     .json(new ApiResponse(200, {}, "OTP resent successfully"));
