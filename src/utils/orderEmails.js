@@ -65,7 +65,7 @@ export const invoiceEmailTemplate = ({
                 </tr>
                 <tr>
                   <td><strong>Total Amount:</strong></td>
-                  <td><strong>₹${totalAmount}</strong></td>
+                  <td><strong>₹${totalAmount.toLocaleString("en-IN")}</strong></td>
                 </tr>
               </table>
 

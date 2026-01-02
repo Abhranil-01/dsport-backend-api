@@ -71,12 +71,17 @@ function waitForFileComplete(filePath) {
 }
 
 // Invoice directory
-const INVOICE_DIR = "/tmp/invoices";
+const INVOICE_DIR = "/tmp";
 fse.ensureDirSync(INVOICE_DIR);
 
 // Generate invoice PDF (returns { invoicePath, invoiceFileName })
 
 export const generateInvoicePdf = async (order, user, address) => {
+  const formatINR = (value) => {
+  if (value === undefined || value === null) return "0";
+  return Number(value).toLocaleString("en-IN");
+};
+
   /* ================= FETCH ORDER ITEMS ================= */
   const orderItems = await OrderItem.find({ orderId: order._id })
     .populate({
@@ -86,7 +91,7 @@ export const generateInvoicePdf = async (order, user, address) => {
     .populate("sizeId");
 
   const invoiceDir = path.join(process.cwd(), "invoices");
-  await fs.ensureDir(invoiceDir);
+  await fse.ensureDir(invoiceDir);
 
   const invoicePath = path.join(invoiceDir, `Invoice_${order._id}.pdf`);
 
@@ -94,7 +99,7 @@ export const generateInvoicePdf = async (order, user, address) => {
   const doc = new PDFDocument({ size: "A4", margin: 40 });
   const stream = fs.createWriteStream(invoicePath);
   doc.pipe(stream);
-
+doc.font(FONT_PATH);
   /* ================= HEADER ================= */
   doc
     .fontSize(22)
@@ -141,7 +146,6 @@ export const generateInvoicePdf = async (order, user, address) => {
   const col = {
     sn: 40,
     name: 70,
-    color: 260,
     size: 330,
     qty: 390,
     price: 450,
@@ -151,7 +155,7 @@ export const generateInvoicePdf = async (order, user, address) => {
     .fontSize(10)
     .text("#", col.sn, tableTop)
     .text("Product", col.name, tableTop)
-    .text("Color", col.color, tableTop)
+
     .text("Size", col.size, tableTop)
     .text("Qty", col.qty, tableTop)
     .text("Price", col.price, tableTop);
@@ -164,34 +168,40 @@ export const generateInvoicePdf = async (order, user, address) => {
   /* ================= TABLE ROWS ================= */
   let position = tableTop + 25;
 
-  orderItems.forEach((item, index) => {
-    doc
-      .fontSize(10)
-      .text(index + 1, col.sn, position)
-      .text(item.productColorItem.productId.productName, col.name, position, {
-        width: 180,
-      })
-      .text(item.productColorItem.color, col.color, position)
-      .text(item.sizeId.size || "Default", col.size, position)
-      .text(item.quantity, col.qty, position)
-      .text(`₹${item.price}`, col.price, position);
+orderItems.forEach((item, index) => {
+  const productText = `${item.productColorItem.productId.productName} - ${item.productColorItem.productColorName}`;
 
-    position += 20;
-  });
+  // Calculate dynamic height
+  const rowHeight = Math.max(
+    doc.heightOfString(productText, { width: 180 }),
+    16 // minimum row height
+  ) + 8; // extra spacing between rows
+
+  doc
+    .fontSize(10)
+    .text(index + 1, col.sn, position)
+    .text(productText, col.name, position, { width: 180 })
+    .text(item.sizeId.size || "Default", col.size, position)
+    .text(item.quantity.toString(), col.qty, position)
+    .text(`₹${formatINR(item.price)}`, col.price, position);
+
+  position += rowHeight;
+});
+;
 
   doc.moveDown(3);
 
   /* ================= SUMMARY ================= */
   doc
     .fontSize(10)
-    .text(`Subtotal: ₹${order.totalPrice}`, { align: "right" })
-    .text(`Discount: -₹${order.discountPrice}`, { align: "right" })
-    .text(`Tax: ₹${order.tax}`, { align: "right" })
-    .text(`Delivery: ₹${order.deliveryCharge}`, { align: "right" })
-    .text(`Handling: ₹${order.handlingCharge}`, { align: "right" })
+    .text(`Subtotal: ₹${formatINR(order.totalPrice)}`, { align: "right" })
+    .text(`Discount: -₹${formatINR(order.discountPrice)}`, { align: "right" })
+    .text(`Tax: ₹${formatINR(order.tax)}`, { align: "right" })
+    .text(`Delivery: ₹${formatINR(order.deliveryCharge)}`, { align: "right" })
+    .text(`Handling: ₹${formatINR(order.handlingCharge)}`, { align: "right" })
     .moveDown(0.5)
     .fontSize(12)
-    .text(`Total Payable: ₹${order.totalPayableAmount}`, {
+    .text(`Total Payable: ₹${formatINR(order.totalPayableAmount)}`, {
       align: "right",
     });
 
@@ -429,7 +439,6 @@ export const createOrderCOD = asyncHandler(async (req, res) => {
               createdOrder.invoiceUrl = uploadRes.secure_url;
               await createdOrder.save();
             }
-            await fs.remove(invoiceResult.invoicePath); // ✅ cleanup
           })
           .catch(() => {});
       } catch (err) {
@@ -446,7 +455,6 @@ export const createOrderCOD = asyncHandler(async (req, res) => {
     session.endSession();
   }
 });
-
 
 export const createRazorpayOrder = asyncHandler(async (req, res) => {
   const { totalAmount } = req.body;
@@ -485,17 +493,12 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
     chargesId,
   } = req.body;
 
-  if (
-    !razorpay_order_id ||
-    !razorpay_payment_id ||
-    !razorpay_signature
-  ) {
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
     throw new ApiError(400, "Missing Razorpay fields");
   }
 
   /* ================= VERIFY RAZORPAY SIGNATURE ================= */
-  const secret =
-    process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET;
+  const secret = process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET;
 
   const body = `${razorpay_order_id}|${razorpay_payment_id}`;
   const expectedSignature = crypto
@@ -645,9 +648,11 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
     }
 
     /* ================= RESPONSE ================= */
-    res.status(200).json(
-      new ApiResponse(200, createdOrder, "Payment verified & order placed")
-    );
+    res
+      .status(200)
+      .json(
+        new ApiResponse(200, createdOrder, "Payment verified & order placed")
+      );
 
     /* ================= HEAVY ASYNC JOBS ================= */
     process.nextTick(async () => {
@@ -674,7 +679,6 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
               createdOrder.invoiceUrl = uploadRes.secure_url;
               await createdOrder.save();
             }
-            await fs.remove(invoiceResult.invoicePath); // ✅ cleanup
           })
           .catch(() => {});
       } catch (err) {
@@ -691,8 +695,6 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
     session.endSession();
   }
 });
-
-
 
 export const verifyPayment = asyncHandler(async (req, res) => {
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =

@@ -1,7 +1,6 @@
 import fs from "fs";
 import { cloudinary } from "./cloudinaryConfig.js";
 
-
 export const uploadInvoiceOnCloudinary = async (localFilePath) => {
   try {
     if (!localFilePath) return null;
@@ -13,12 +12,16 @@ export const uploadInvoiceOnCloudinary = async (localFilePath) => {
       unique_filename: false,
     });
 
-    fs.existsSync(localFilePath) && fs.unlinkSync(localFilePath);
-
     return response;
   } catch (error) {
     console.log("Cloudinary upload error:", error);
-    fs.existsSync(localFilePath) && fs.unlinkSync(localFilePath);
     return null;
+  } finally {
+    // ✅ SINGLE SOURCE OF FILE DELETION
+    if (localFilePath && fs.existsSync(localFilePath)) {
+      try {
+        fs.unlinkSync(localFilePath);
+      } catch {}
+    }
   }
 };
