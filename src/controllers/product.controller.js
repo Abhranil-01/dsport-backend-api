@@ -418,8 +418,8 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
       color,
       size,
       gender,
-      rating, // "4,3,2"
-      noRating, // "true"
+      rating,
+      noRating,
       sortBy,
     } = req.query;
 
@@ -440,8 +440,6 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
       : [];
 
     const includeNoRating = noRating === "true";
-
-    // ⭐ "X & above" → take minimum
     const minSelectedRating =
       ratingValues.length > 0 ? Math.min(...ratingValues) : null;
 
@@ -454,25 +452,46 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
     if (sortBy === "reviews_desc") sortStage = { totalReviews: -1 };
     if (sortBy === "reviews_asc") sortStage = { totalReviews: 1 };
 
-    /* ================= PRICE FLAG ================= */
+    /* ================= FLAGS ================= */
 
     const hasPriceFilter = minPrice !== undefined || maxPrice !== undefined;
 
     /* =========================================================
-       COLOR ITEM PIPELINE
+       COLOR ITEM PIPELINE (FIXED)
     ========================================================= */
 
     const colorItemPipeline = [
-      /* ---------- LOOKUPS ---------- */
-
+      /* ---------- DEFAULT SIZE PRICE ONLY ---------- */
       {
         $lookup: {
           from: "productpriceandsizeandstocks",
-          localField: "_id",
-          foreignField: "productColorId",
+          let: { colorId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$productColorId", "$$colorId"] },
+                    { $eq: ["$defaultsize", true] }, // ⭐ FIX
+                  ],
+                },
+              },
+            },
+            {
+              $project: {
+                size: 1,
+                stock: 1,
+                actualPrice: 1,
+                offerPercentage: 1,
+                offerPrice: 1,
+              },
+            },
+          ],
           as: "sizes",
         },
       },
+
+      /* ---------- IMAGES ---------- */
       {
         $lookup: {
           from: "productcoverimages",
@@ -489,6 +508,8 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
           as: "images",
         },
       },
+
+      /* ---------- REVIEWS ---------- */
       {
         $lookup: {
           from: "reviewratings",
@@ -499,7 +520,6 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
       },
 
       /* ---------- RATING CALC ---------- */
-
       {
         $addFields: {
           totalReviews: { $size: "$reviews" },
@@ -513,8 +533,7 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
         },
       },
 
-      /* ---------- ⭐ RATING FILTER ---------- */
-
+      /* ---------- RATING FILTER ---------- */
       ...(minSelectedRating !== null || includeNoRating
         ? [
             {
@@ -525,11 +544,7 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
                         {
                           $and: [
                             { totalReviews: { $gt: 0 } },
-                            {
-                              averageRating: {
-                                $gte: minSelectedRating,
-                              },
-                            },
+                            { averageRating: { $gte: minSelectedRating } },
                           ],
                         },
                       ]
@@ -541,58 +556,36 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
           ]
         : []),
 
-      /* ---------- 💰 PRICE FILTER (SAFE) ---------- */
-
+      /* ---------- PRICE FILTER (FIXED) ---------- */
       ...(hasPriceFilter
         ? [
             {
-              $addFields: {
-                sizes: {
-                  $filter: {
-                    input: "$sizes",
-                    as: "s",
-                    cond: {
-                      $and: [
-                        ...(minPrice !== undefined
-                          ? [
-                              {
-                                $gte: ["$$s.offerPrice", Number(minPrice)],
-                              },
-                            ]
-                          : []),
-                        ...(maxPrice !== undefined
-                          ? [
-                              {
-                                $lte: ["$$s.offerPrice", Number(maxPrice)],
-                              },
-                            ]
-                          : []),
-                      ],
-                    },
-                  },
-                },
+              $match: {
+                ...(minPrice !== undefined
+                  ? { "sizes.offerPrice": { $gte: Number(minPrice) } }
+                  : {}),
+                ...(maxPrice !== undefined
+                  ? { "sizes.offerPrice": { $lte: Number(maxPrice) } }
+                  : {}),
               },
             },
-            { $match: { "sizes.0": { $exists: true } } },
           ]
         : []),
 
       /* ---------- SIZE FILTER ---------- */
-
-      ...(sizes.length ? [{ $match: { "sizes.size": { $in: sizes } } }] : []),
+      ...(sizes.length
+        ? [{ $match: { "sizes.size": { $in: sizes } } }]
+        : []),
 
       /* ---------- COLOR FILTER ---------- */
-
       ...(colors.length ? [{ $match: { color: { $in: colors } } }] : []),
 
       /* ---------- GENDER FILTER ---------- */
-
       ...(genders.length ? [{ $match: { gender: { $in: genders } } }] : []),
 
       { $sort: sortStage },
 
       /* ---------- FINAL SHAPE ---------- */
-
       {
         $project: {
           _id: 1,
@@ -617,7 +610,6 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
     ========================================================= */
 
     const pipeline = [
-      /* ---------- PRODUCT MATCH ---------- */
       {
         $match: {
           ...(subcategoryId
@@ -628,7 +620,6 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
         },
       },
 
-      /* ---------- SUBCATEGORY LOOKUP ---------- */
       {
         $lookup: {
           from: "productsubcategories",
@@ -639,7 +630,6 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
       },
       { $unwind: "$subCategory" },
 
-      /* ---------- COLOR ITEMS LOOKUP ---------- */
       {
         $lookup: {
           from: "productcolorwiseitems",
@@ -652,7 +642,6 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
 
       { $unwind: "$colorItems" },
 
-      /* ---------- MERGE PRODUCT DATA ---------- */
       {
         $addFields: {
           "colorItems.productName": "$productName",
@@ -661,10 +650,7 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
         },
       },
 
-      /* ---------- FINAL ROOT ---------- */
-      {
-        $replaceRoot: { newRoot: "$colorItems" },
-      },
+      { $replaceRoot: { newRoot: "$colorItems" } },
 
       { $skip: skip },
       { $limit: Number(limit) },
@@ -672,12 +658,9 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
 
     const colorItems = await Product.aggregate(pipeline);
 
-    /* =========================================================
-       COUNT PIPELINE
-    ========================================================= */
+    /* ================= COUNT ================= */
 
     const countPipeline = [...pipeline.slice(0, -2), { $count: "total" }];
-
     const countResult = await Product.aggregate(countPipeline);
 
     /* ================= RESPONSE ================= */
@@ -693,6 +676,7 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 const getSingleProductColorWise = asyncHandler(async (req, res) => {
   try {
