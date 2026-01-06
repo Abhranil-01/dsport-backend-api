@@ -402,6 +402,7 @@ const getAllProducts = asyncHandler(async (req, res) => {
   }
 });
 
+
 const getcolorWiseItems = asyncHandler(async (req, res) => {
   try {
     /* ================= PARAMS ================= */
@@ -443,6 +444,8 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
     const minSelectedRating =
       ratingValues.length > 0 ? Math.min(...ratingValues) : null;
 
+    const hasPriceFilter = minPrice !== undefined || maxPrice !== undefined;
+
     /* ================= SORT ================= */
 
     let sortStage = { _id: -1 };
@@ -451,159 +454,166 @@ const getcolorWiseItems = asyncHandler(async (req, res) => {
     if (sortBy === "rating_asc") sortStage = { averageRating: 1 };
     if (sortBy === "reviews_desc") sortStage = { totalReviews: -1 };
     if (sortBy === "reviews_asc") sortStage = { totalReviews: 1 };
-
-    /* ================= FLAGS ================= */
-
-    const hasPriceFilter = minPrice !== undefined || maxPrice !== undefined;
+    if (sortBy === "price_asc") sortStage = { "defaultSize.offerPrice": 1 };
+    if (sortBy === "price_desc") sortStage = { "defaultSize.offerPrice": -1 };
 
     /* =========================================================
-       COLOR ITEM PIPELINE (FIXED)
+       COLOR ITEM PIPELINE (ALL SIZES KEPT)
     ========================================================= */
 
-    const colorItemPipeline = [
-      /* ---------- DEFAULT SIZE PRICE ONLY ---------- */
-      {
-        $lookup: {
-          from: "productpriceandsizeandstocks",
-          let: { colorId: "$_id" },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ["$productColorId", "$$colorId"] },
-                    { $eq: ["$defaultsize", true] }, // ⭐ FIX
-                  ],
-                },
+  const colorItemPipeline = [
+  /* ---------- ALL SIZES ---------- */
+  {
+    $lookup: {
+      from: "productpriceandsizeandstocks",
+      localField: "_id",
+      foreignField: "productColorId",
+      as: "sizes",
+    },
+  },
+
+  /* ---------- DEFAULT SIZE (SAFE) ---------- */
+  {
+    $addFields: {
+      defaultSize: {
+        $let: {
+          vars: {
+            defaultArr: {
+              $filter: {
+                input: "$sizes",
+                as: "s",
+                cond: { $eq: ["$$s.defaultsize", true] },
               },
             },
-            {
-              $project: {
-                size: 1,
-                stock: 1,
-                actualPrice: 1,
-                offerPercentage: 1,
-                offerPrice: 1,
-              },
-            },
-          ],
-          as: "sizes",
-        },
-      },
-
-      /* ---------- IMAGES ---------- */
-      {
-        $lookup: {
-          from: "productcoverimages",
-          localField: "_id",
-          foreignField: "productColorId",
-          as: "coverImage",
-        },
-      },
-      {
-        $lookup: {
-          from: "productimages",
-          localField: "_id",
-          foreignField: "productColorId",
-          as: "images",
-        },
-      },
-
-      /* ---------- REVIEWS ---------- */
-      {
-        $lookup: {
-          from: "reviewratings",
-          localField: "_id",
-          foreignField: "productcolorId",
-          as: "reviews",
-        },
-      },
-
-      /* ---------- RATING CALC ---------- */
-      {
-        $addFields: {
-          totalReviews: { $size: "$reviews" },
-          averageRating: {
+          },
+          in: {
             $cond: [
-              { $gt: [{ $size: "$reviews" }, 0] },
-              { $avg: "$reviews.rating" },
-              0,
+              { $gt: [{ $size: "$$defaultArr" }, 0] },
+              { $arrayElemAt: ["$$defaultArr", 0] }, // ✅ real default
+              { $arrayElemAt: ["$sizes", 0] },       // ✅ fallback
             ],
           },
         },
       },
+    },
+  },
 
-      /* ---------- RATING FILTER ---------- */
-      ...(minSelectedRating !== null || includeNoRating
-        ? [
-            {
-              $match: {
-                $or: [
-                  ...(minSelectedRating !== null
-                    ? [
-                        {
-                          $and: [
-                            { totalReviews: { $gt: 0 } },
-                            { averageRating: { $gte: minSelectedRating } },
-                          ],
-                        },
-                      ]
-                    : []),
-                  ...(includeNoRating ? [{ totalReviews: { $eq: 0 } }] : []),
-                ],
-              },
-            },
-          ]
-        : []),
+  /* ---------- IMAGES ---------- */
+  {
+    $lookup: {
+      from: "productcoverimages",
+      localField: "_id",
+      foreignField: "productColorId",
+      as: "coverImage",
+    },
+  },
+  {
+    $lookup: {
+      from: "productimages",
+      localField: "_id",
+      foreignField: "productColorId",
+      as: "images",
+    },
+  },
 
-      /* ---------- PRICE FILTER (FIXED) ---------- */
-      ...(hasPriceFilter
-        ? [
-            {
-              $match: {
-                ...(minPrice !== undefined
-                  ? { "sizes.offerPrice": { $gte: Number(minPrice) } }
-                  : {}),
-                ...(maxPrice !== undefined
-                  ? { "sizes.offerPrice": { $lte: Number(maxPrice) } }
-                  : {}),
-              },
-            },
-          ]
-        : []),
+  /* ---------- REVIEWS ---------- */
+  {
+    $lookup: {
+      from: "reviewratings",
+      localField: "_id",
+      foreignField: "productcolorId",
+      as: "reviews",
+    },
+  },
 
-      /* ---------- SIZE FILTER ---------- */
-      ...(sizes.length
-        ? [{ $match: { "sizes.size": { $in: sizes } } }]
-        : []),
+  /* ---------- RATING CALC ---------- */
+  {
+    $addFields: {
+      totalReviews: { $size: "$reviews" },
+      averageRating: {
+        $cond: [
+          { $gt: [{ $size: "$reviews" }, 0] },
+          { $avg: "$reviews.rating" },
+          0,
+        ],
+      },
+    },
+  },
 
-      /* ---------- COLOR FILTER ---------- */
-      ...(colors.length ? [{ $match: { color: { $in: colors } } }] : []),
+  /* ---------- RATING FILTER ---------- */
+  ...(minSelectedRating !== null || includeNoRating
+    ? [
+        {
+          $match: {
+            $or: [
+              ...(minSelectedRating !== null
+                ? [
+                    {
+                      $and: [
+                        { totalReviews: { $gt: 0 } },
+                        { averageRating: { $gte: minSelectedRating } },
+                      ],
+                    },
+                  ]
+                : []),
+              ...(includeNoRating ? [{ totalReviews: { $eq: 0 } }] : []),
+            ],
+          },
+        },
+      ]
+    : []),
 
-      /* ---------- GENDER FILTER ---------- */
-      ...(genders.length ? [{ $match: { gender: { $in: genders } } }] : []),
-
-      { $sort: sortStage },
-
-      /* ---------- FINAL SHAPE ---------- */
+  /* ---------- PRICE FILTER (NOW WORKS) ---------- */
+...(hasPriceFilter
+  ? [
       {
-        $project: {
-          _id: 1,
-          productId: 1,
-          productColorName: 1,
-          productName: 1,
-          productSubCategory: 1,
-          categoryId: 1,
-          color: 1,
-          gender: 1,
-          coverImage: 1,
-          images: 1,
-          sizes: 1,
-          averageRating: 1,
-          totalReviews: 1,
+        $match: {
+          "defaultSize.offerPrice": {
+            ...(minPrice !== undefined
+              ? { $gte: Number(minPrice) }
+              : {}),
+            ...(maxPrice !== undefined
+              ? { $lte: Number(maxPrice) }
+              : {}),
+          },
         },
       },
-    ];
+    ]
+  : []),
+
+
+  /* ---------- SIZE FILTER (ANY SIZE) ---------- */
+  ...(sizes.length ? [{ $match: { "sizes.size": { $in: sizes } } }] : []),
+
+  /* ---------- COLOR FILTER ---------- */
+  ...(colors.length ? [{ $match: { color: { $in: colors } } }] : []),
+
+  /* ---------- GENDER FILTER ---------- */
+  ...(genders.length ? [{ $match: { gender: { $in: genders } } }] : []),
+
+  { $sort: sortStage },
+
+  /* ---------- FINAL SHAPE ---------- */
+  {
+    $project: {
+      _id: 1,
+      productId: 1,
+      productColorName: 1,
+      productName: 1,
+      productSubCategory: 1,
+      categoryId: 1,
+      color: 1,
+      gender: 1,
+      coverImage: 1,
+      images: 1,
+      sizes: 1,        // ✅ ALL SIZES
+      defaultSize: 1,  // ✅ SAFE DEFAULT
+      averageRating: 1,
+      totalReviews: 1,
+    },
+  },
+];
+
 
     /* =========================================================
        MAIN PRODUCT PIPELINE

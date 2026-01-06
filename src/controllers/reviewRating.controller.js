@@ -23,9 +23,10 @@ const createReviewRating = asyncHandler(async (req, res) => {
   });
 
   // 🔥 SOCKET → ADMIN ONLY (LIKE ORDERS)
-  getIO().to("ADMIN").emit("REVIEW_CREATED", {
-    review: reviewRating,
-  });
+getIO().to("ADMIN").emit("REVIEW_CREATED", {
+  productcolorId: reviewRating.productcolorId,
+});
+
 
   return res
     .status(201)
@@ -53,10 +54,10 @@ const updateReviewRating = asyncHandler(async (req, res) => {
   }
 
   // ✅ SOCKET → ADMIN (invalidate exact product)
-  getIO().to("ADMIN").emit("REVIEW_UPDATED", {
-    productcolorId: reviewRating.productcolorId,
-    reviewId: reviewRating._id,
-  });
+getIO().to("ADMIN").emit("REVIEW_UPDATED", {
+  productcolorId: reviewRating.productcolorId,
+});
+
 
   return res.status(200).json(
     new ApiResponse(200, reviewRating, "Review updated successfully")
