@@ -427,6 +427,7 @@ export const createOrderCOD = asyncHandler(async (req, res) => {
           invoiceResult.invoicePath,
           `Invoice_${createdOrder._id}.pdf`,
           invoiceEmailTemplate({
+            userName: req.user.fullname,
             orderId: createdOrder._id,
             orderDate: new Date(createdOrder.createdAt).toLocaleDateString(),
             totalAmount: createdOrder.totalPayableAmount,
@@ -655,7 +656,7 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
       );
 
     /* ================= HEAVY ASYNC JOBS ================= */
-    process.nextTick(async () => {
+  process.nextTick(async () => {
       try {
         const invoiceResult = await generateInvoicePdf(
           createdOrder,
@@ -670,7 +671,13 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
           `Your Invoice - Order ${createdOrder._id}`,
           null,
           invoiceResult.invoicePath,
-          `Invoice_${createdOrder._id}.pdf`
+          `Invoice_${createdOrder._id}.pdf`,
+          invoiceEmailTemplate({
+            userName: req.user.fullname,
+            orderId: createdOrder._id,
+            orderDate: new Date(createdOrder.createdAt).toLocaleDateString(),
+            totalAmount: createdOrder.totalPayableAmount,
+          })
         );
 
         uploadInvoiceOnCloudinary(invoiceResult.invoicePath)
