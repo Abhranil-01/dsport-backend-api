@@ -8,7 +8,7 @@ export const initSocket = (httpServer) => {
     : ["http://localhost:5173", "http://localhost:3000"];
 
   io = new Server(httpServer, {
-    transports: ["websocket"], // 🔥 FIX
+    transports: ["polling", "websocket"], // ✅ REQUIRED
     cors: {
       origin: allowedOrigins,
       credentials: true,
@@ -18,10 +18,7 @@ export const initSocket = (httpServer) => {
   io.on("connection", (socket) => {
     console.log("✅ Socket connected:", socket.id);
 
-    socket.on("JOIN_ADMIN", () => {
-      socket.join("ADMIN");
-    });
-
+    socket.on("JOIN_ADMIN", () => socket.join("ADMIN"));
     socket.on("JOIN_USER", (userId) => {
       if (userId) socket.join(`USER_${userId}`);
     });
