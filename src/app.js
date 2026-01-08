@@ -14,25 +14,26 @@ app.set("trust proxy", 1);
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",")
   : ["http://localhost:3000", "http://localhost:5173"];
-
 app.use(
   cors({
     origin: (origin, callback) => {
-      // allow requests with no origin (curl, Postman)
+      // allow server-to-server, Postman, cron, socket internal calls
       if (!origin) return callback(null, true);
 
-      // allow only listed origins
       if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
+        // 🔑 MUST echo the exact origin when credentials=true
+        return callback(null, origin);
       }
 
-      // reject all other origins
-      return callback(new Error("CORS not allowed"));
+      // ❌ NEVER throw error here
+      // Just disallow credentials silently
+      return callback(null, false);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   })
 );
+
 
 
 
