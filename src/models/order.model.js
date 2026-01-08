@@ -62,7 +62,11 @@ const orderSchema = new Schema(
     /* Cancellation & Refund */
     cancelledAt: Date,
 
-    /* Invoice */
+    invoiceStatus: {
+  type: String,
+  enum: ["PENDING", "READY", "FAILED"],
+  default: "PENDING",
+},
     invoiceUrl: {
       type: String,
       default: null,

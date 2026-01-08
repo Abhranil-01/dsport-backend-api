@@ -1,4 +1,4 @@
-import fs from "fs";
+
 import { cloudinary } from "./cloudinaryConfig.js";
 
 export const uploadInvoiceOnCloudinary = async (localFilePath) => {
@@ -16,12 +16,5 @@ export const uploadInvoiceOnCloudinary = async (localFilePath) => {
   } catch (error) {
     console.log("Cloudinary upload error:", error);
     return null;
-  } finally {
-    // ✅ SINGLE SOURCE OF FILE DELETION
-    if (localFilePath && fs.existsSync(localFilePath)) {
-      try {
-        fs.unlinkSync(localFilePath);
-      } catch {}
-    }
-  }
+  } 
 };

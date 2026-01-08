@@ -22,241 +22,21 @@ import { Charges } from "./../models/charges.model.js";
 import { uploadInvoiceOnCloudinary } from "../utils/uploadInvoiceOnCloudinary.js";
 import { sendEmail } from "../utils/sendEmail.js";
 import { getIO } from "../socket.js";
+import {invoiceQueue} from '../queues/invoice.queues.js';
 // import crypto from 'crypto'
 import {
+
   paymentStatusEmail,
   deliveryStatusEmail,
   orderCancelledEmail,
   invoiceEmailTemplate,
 } from "../utils/orderEmails.js";
 
-// Fix __dirname for ES Modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
-// Load font file path (used when generating each PDF)
-const FONT_PATH = path.join(
-  __dirname,
-  "..",
-  "assets",
-  "fonts",
-  "NotoSans-Regular.ttf"
-);
 
-// Nodemailer transporter (ensure env variables are set)
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT) || 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_MAIL,
-    pass: process.env.SMTP_PASSWORD,
-  },
-});
 
-// Helper: wait for file write completion
-function waitForFileComplete(filePath) {
-  return new Promise((resolve) => {
-    let prevSize = -1;
-    const interval = setInterval(() => {
-      if (!fs.existsSync(filePath)) return;
-      const { size } = fs.statSync(filePath);
-      if (size === prevSize && size > 0) {
-        clearInterval(interval);
-        resolve();
-      }
-      prevSize = size;
-    }, 50);
-  });
-}
 
-// Invoice directory
-const INVOICE_DIR = "/tmp";
-fse.ensureDirSync(INVOICE_DIR);
 
-// Generate invoice PDF (returns { invoicePath, invoiceFileName })
-
-export const generateInvoicePdf = async (order, user, address) => {
-  const formatINR = (value) => {
-  if (value === undefined || value === null) return "0";
-  return Number(value).toLocaleString("en-IN");
-};
-
-  /* ================= FETCH ORDER ITEMS ================= */
-  const orderItems = await OrderItem.find({ orderId: order._id })
-    .populate({
-      path: "productColorItem",
-      populate: { path: "productId" },
-    })
-    .populate("sizeId");
-
-  const invoiceDir = path.join(process.cwd(), "invoices");
-  await fse.ensureDir(invoiceDir);
-
-  const invoicePath = path.join(invoiceDir, `Invoice_${order._id}.pdf`);
-
-  /* ================= CREATE PDF ================= */
-  const doc = new PDFDocument({ size: "A4", margin: 40 });
-  const stream = fs.createWriteStream(invoicePath);
-  doc.pipe(stream);
-doc.font(FONT_PATH);
-  /* ================= HEADER ================= */
-  doc
-    .fontSize(22)
-    .fillColor("#0d6efd")
-    .text("Dsport", { align: "left" })
-    .fontSize(10)
-    .fillColor("gray")
-    .text("All Sports. One Store.")
-    .moveDown();
-
-  doc
-    .fontSize(12)
-    .fillColor("black")
-    .text(`Invoice ID: ${order._id}`, { align: "right" })
-    .text(`Date: ${new Date(order.createdAt).toLocaleDateString()}`, {
-      align: "right",
-    })
-    .text(`Payment Mode: ${order.paymentMode}`, { align: "right" })
-    .text(`Payment Status: ${order.paymentStatus}`, { align: "right" });
-
-  doc.moveDown(2);
-
-  /* ================= BILLING ================= */
-  doc
-    .fontSize(12)
-    .fillColor("#0d6efd")
-    .text("Billing & Shipping Details")
-    .moveDown(0.5);
-
-  doc
-    .fontSize(10)
-    .fillColor("black")
-    .text(address.name)
-    .text(address.address)
-    .text(`${address.city}, ${address.state} - ${address.pincode}`)
-    .text(address.country)
-    .text(`Phone: ${address.phone}`)
-    .text(`Email: ${address.email || user.email}`);
-
-  doc.moveDown(2);
-
-  /* ================= TABLE HEADER ================= */
-  const tableTop = doc.y;
-  const col = {
-    sn: 40,
-    name: 70,
-    size: 330,
-    qty: 390,
-    price: 450,
-  };
-
-  doc
-    .fontSize(10)
-    .text("#", col.sn, tableTop)
-    .text("Product", col.name, tableTop)
-
-    .text("Size", col.size, tableTop)
-    .text("Qty", col.qty, tableTop)
-    .text("Price", col.price, tableTop);
-
-  doc
-    .moveTo(40, tableTop + 15)
-    .lineTo(550, tableTop + 15)
-    .stroke();
-
-  /* ================= TABLE ROWS ================= */
-  let position = tableTop + 25;
-
-orderItems.forEach((item, index) => {
-  const productText = `${item.productColorItem.productId.productName} - ${item.productColorItem.productColorName}`;
-
-  // Calculate dynamic height
-  const rowHeight = Math.max(
-    doc.heightOfString(productText, { width: 180 }),
-    16 // minimum row height
-  ) + 8; // extra spacing between rows
-
-  doc
-    .fontSize(10)
-    .text(index + 1, col.sn, position)
-    .text(productText, col.name, position, { width: 180 })
-    .text(item.sizeId.size || "Default", col.size, position)
-    .text(item.quantity.toString(), col.qty, position)
-    .text(`₹${formatINR(item.price)}`, col.price, position);
-
-  position += rowHeight;
-});
-;
-
-  doc.moveDown(3);
-
-  /* ================= SUMMARY ================= */
-  doc
-    .fontSize(10)
-    .text(`Subtotal: ₹${formatINR(order.totalPrice)}`, { align: "right" })
-    .text(`Discount: -₹${formatINR(order.discountPrice)}`, { align: "right" })
-    .text(`Tax: ₹${formatINR(order.tax)}`, { align: "right" })
-    .text(`Delivery: ₹${formatINR(order.deliveryCharge)}`, { align: "right" })
-    .text(`Handling: ₹${formatINR(order.handlingCharge)}`, { align: "right" })
-    .moveDown(0.5)
-    .fontSize(12)
-    .text(`Total Payable: ₹${formatINR(order.totalPayableAmount)}`, {
-      align: "right",
-    });
-
-  /* ================= FOOTER ================= */
-  doc.moveDown(3);
-  doc
-    .fontSize(9)
-    .fillColor("gray")
-    .text("This is a system generated invoice. No signature required.", {
-      align: "center",
-    })
-    .text(`© ${new Date().getFullYear()} Dsport. All rights reserved.`, {
-      align: "center",
-    });
-
-  doc.end();
-
-  /* ================= WAIT FOR FILE ================= */
-  await new Promise((resolve) => stream.on("finish", resolve));
-
-  return { invoicePath };
-};
-
-// Helper to send invoice email
-async function sendInvoiceEmail(
-  toEmail,
-  subject,
-  text,
-  attachmentPath,
-  attachmentName,
-  html
-) {
-  const emailList = Array.isArray(toEmail) ? toEmail : [toEmail];
-  const uniqueEmails = [...new Set(emailList)];
-
-  for (const email of uniqueEmails) {
-    const mailOptions = {
-      from: `"Dsport" <${process.env.SMTP_USER}>`,
-      to: email,
-      subject:
-        subject || "Invoice from " + (process.env.STORE_NAME || "Dsport"),
-      text: text || "Please find your invoice.",
-      html: html,
-      attachments:
-        attachmentPath && !attachmentPath.startsWith("http")
-          ? [{ filename: attachmentName, path: attachmentPath }]
-          : [],
-    };
-
-    // keep sendMail awaited so caller can catch errors if they want
-    await transporter.sendMail(mailOptions);
-  }
-
-  return { sentTo: uniqueEmails };
-}
 
 export const createOrderCOD = asyncHandler(async (req, res) => {
   const { cartItemIds, addressId, chargesId } = req.body;
@@ -403,6 +183,7 @@ export const createOrderCOD = asyncHandler(async (req, res) => {
     }
 
     /* ================= RESPONSE ================= */
+    console.log("✅ Order created:", createdOrder._id);
     res
       .status(201)
       .json(
@@ -410,46 +191,24 @@ export const createOrderCOD = asyncHandler(async (req, res) => {
       );
 
     /* ================= HEAVY ASYNC JOBS ================= */
-    process.nextTick(async () => {
-      try {
-        const invoiceResult = await generateInvoicePdf(
-          createdOrder,
-          req.user,
-          addressSnapshot
-        );
 
-        const emails = [req.user.email, addressSnapshot.email].filter(Boolean);
+await invoiceQueue.add(
+  "GENERATE_INVOICE",
+  {
+    orderId: createdOrder._id.toString(),
+    userId: req.user._id.toString(),
+    addressSnapshot, // already cloned safely
+  },
+  {
+    attempts: 3,
+    backoff: {
+      type: "exponential",
+      delay: 5000,
+    },
+    removeOnComplete: true,
+  }
+);
 
-        await sendInvoiceEmail(
-          emails,
-          `Your Invoice - Order ${createdOrder._id}`,
-          null,
-          invoiceResult.invoicePath,
-          `Invoice_${createdOrder._id}.pdf`,
-          invoiceEmailTemplate({
-            userName: req.user.fullname,
-            orderId: createdOrder._id,
-            orderDate: new Date(createdOrder.createdAt).toLocaleDateString(),
-            totalAmount: createdOrder.totalPayableAmount,
-          })
-        );
-
-        uploadInvoiceOnCloudinary(invoiceResult.invoicePath)
-          .then(async (uploadRes) => {
-            if (uploadRes?.secure_url) {
-              createdOrder.invoiceUrl = uploadRes.secure_url;
-              await createdOrder.save();
-            }
-          })
-          .catch(() => {});
-      } catch (err) {
-        console.error(
-          "Post-order async failed:",
-          err.message,
-          createdOrder?._id
-        );
-      }
-    });
   } catch (err) {
     throw err instanceof ApiError ? err : new ApiError(500, err.message);
   } finally {
@@ -656,46 +415,22 @@ export const verifyPaymentAndCreateOrder = asyncHandler(async (req, res) => {
       );
 
     /* ================= HEAVY ASYNC JOBS ================= */
-  process.nextTick(async () => {
-      try {
-        const invoiceResult = await generateInvoicePdf(
-          createdOrder,
-          req.user,
-          addressSnapshot
-        );
-
-        const emails = [req.user.email, addressSnapshot.email].filter(Boolean);
-
-        await sendInvoiceEmail(
-          emails,
-          `Your Invoice - Order ${createdOrder._id}`,
-          null,
-          invoiceResult.invoicePath,
-          `Invoice_${createdOrder._id}.pdf`,
-          invoiceEmailTemplate({
-            userName: req.user.fullname,
-            orderId: createdOrder._id,
-            orderDate: new Date(createdOrder.createdAt).toLocaleDateString(),
-            totalAmount: createdOrder.totalPayableAmount,
-          })
-        );
-
-        uploadInvoiceOnCloudinary(invoiceResult.invoicePath)
-          .then(async (uploadRes) => {
-            if (uploadRes?.secure_url) {
-              createdOrder.invoiceUrl = uploadRes.secure_url;
-              await createdOrder.save();
-            }
-          })
-          .catch(() => {});
-      } catch (err) {
-        console.error(
-          "Post-order async failed:",
-          err.message,
-          createdOrder?._id
-        );
-      }
-    });
+await invoiceQueue.add(
+  "GENERATE_INVOICE",
+  {
+    orderId: createdOrder._id.toString(),
+    userId: req.user._id.toString(),
+    addressSnapshot, // already cloned safely
+  },
+  {
+    attempts: 3,
+    backoff: {
+      type: "exponential",
+      delay: 5000,
+    },
+    removeOnComplete: true,
+  }
+);
   } catch (err) {
     throw err instanceof ApiError ? err : new ApiError(500, err.message);
   } finally {
@@ -958,6 +693,7 @@ export const getAllOrders = asyncHandler(async (req, res) => {
         totalPrice: { $first: "$totalPrice" },
         totalPayableAmount: { $first: "$totalPayableAmount" },
         invoiceUrl: { $first: "$invoiceUrl" },
+        invoiceStatus: { $first: "$invoiceStatus" },
         createdAt: { $first: "$createdAt" },
 
         orderItems: {
@@ -1239,9 +975,27 @@ export const getOrderByIdForAdmin = asyncHandler(async (req, res) => {
 });
 
 export const getOrderById = asyncHandler(async (req, res) => {
+  const orderId = new mongoose.Types.ObjectId(req.params.id);
+
+console.log(orderId);
+
   const orders = await Order.aggregate([
-    { $match: { user: req.user._id } },
-    { $match: { _id: mongoose.Types.ObjectId(req.params.id) } },
+    {
+      $match: {
+        _id: orderId,
+        user: req.user._id,
+      },
+    },
+
+    {
+      $lookup: {
+        from: "orderitems",
+        localField: "_id",
+        foreignField: "orderId",
+        as: "orderItems",
+      },
+    },
+
     {
       $lookup: {
         from: "addresses",
@@ -1250,10 +1004,130 @@ export const getOrderById = asyncHandler(async (req, res) => {
         as: "address",
       },
     },
+    { $unwind: { path: "$address", preserveNullAndEmptyArrays: true } },
+
+    {
+      $unwind: {
+        path: "$orderItems",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+
+    {
+      $lookup: {
+        from: "productpriceandsizeandstocks",
+        localField: "orderItems.sizeId",
+        foreignField: "_id",
+        as: "size",
+      },
+    },
+    { $unwind: { path: "$size", preserveNullAndEmptyArrays: true } },
+
+    // =========================
+    // PRODUCT COLOR ITEM
+    // =========================
+    {
+      $lookup: {
+        from: "productcolorwiseitems",
+        localField: "orderItems.productColorItem",
+        foreignField: "_id",
+        as: "productColorItem",
+      },
+    },
+    {
+      $unwind: {
+        path: "$productColorItem",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+
+    // =========================
+    // PRODUCT
+    // =========================
+    {
+      $lookup: {
+        from: "products",
+        localField: "productColorItem.productId",
+        foreignField: "_id",
+        as: "product",
+      },
+    },
+    { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
+
+    // =========================
+    // COVER IMAGES
+    // =========================
+    {
+      $lookup: {
+        from: "productcoverimages",
+        localField: "productColorItem._id",
+        foreignField: "productColorId",
+        as: "coverImages",
+      },
+    },
+
+    // =========================
+    // REVIEWS
+    // =========================
+    {
+      $lookup: {
+        from: "reviewratings",
+        localField: "orderItems._id",
+        foreignField: "orderItemId",
+        as: "reviews",
+      },
+    },
+
+    // =========================
+    // GROUP BACK TO ORDER
+    // =========================
+    {
+      $group: {
+        _id: "$_id",
+        user: { $first: "$user" },
+        address: { $first: "$address" },
+        paymentStatus: { $first: "$paymentStatus" },
+        orderStatus: { $first: "$orderStatus" },
+        deliveryStatus: { $first: "$deliveryStatus" },
+        paymentMode: { $first: "$paymentMode" },
+        deliveryCharge: { $first: "$deliveryCharge" },
+        handlingCharge: { $first: "$handlingCharge" },
+        tax: { $first: "$tax" },
+        totalQuantity: { $first: "$totalQuantity" },
+        discountPrice: { $first: "$discountPrice" },
+        totalPrice: { $first: "$totalPrice" },
+        totalPayableAmount: { $first: "$totalPayableAmount" },
+        invoiceUrl: { $first: "$invoiceUrl" },
+        invoiceStatus: { $first: "$invoiceStatus" },
+        createdAt: { $first: "$createdAt" },
+
+        orderItems: {
+          $push: {
+            _id: "$orderItems._id",
+            quantity: "$orderItems.quantity",
+            price: "$orderItems.price",
+            size: "$size",
+            product: "$product",
+            productColorItem: "$productColorItem",
+            coverImages: "$coverImages",
+            reviews: "$reviews",
+          },
+        },
+      },
+    },
+
   ]);
 
-  return res.status(200).json(new ApiResponse(200, orders, "Orders fetched"));
+  if (!orders.length) {
+    throw new ApiError(404, "Order not found");
+  }
+console.log(orders);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, orders[0], "Order fetched successfully"));
 });
+
 
 // export const razorpayWebhook = asyncHandler(async (req, res) => {
 //   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;

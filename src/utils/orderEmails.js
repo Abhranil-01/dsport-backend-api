@@ -1,5 +1,5 @@
 export const invoiceEmailTemplate = ({
-  userName,
+  username,
   orderId,
   orderDate,
   totalAmount,
@@ -45,7 +45,7 @@ export const invoiceEmailTemplate = ({
           <tr>
             <td style="padding:30px; color:#333;">
               <p style="font-size:15px;">
-                Hi <strong>${userName}</strong>,
+                Hi <strong>${username}</strong>,
               </p>
 
               <p style="font-size:15px; line-height:1.6;">
@@ -65,7 +65,7 @@ export const invoiceEmailTemplate = ({
                 </tr>
                 <tr>
                   <td><strong>Total Amount:</strong></td>
-                  <td><strong>₹${totalAmount.toLocaleString("en-IN")}</strong></td>
+                  <td><strong>₹${totalAmount}</strong></td>
                 </tr>
               </table>
 
