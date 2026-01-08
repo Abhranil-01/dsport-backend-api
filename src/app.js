@@ -1,7 +1,6 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import invoiceQueueEvents from "./queues/invoicequeueevents.queues.js";
 const app = express();
 
 /* =========================
