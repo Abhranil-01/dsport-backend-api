@@ -8,11 +8,10 @@ export const initSocket = (httpServer) => {
     : ["http://localhost:5173", "http://localhost:3000"];
 
   io = new Server(httpServer, {
-    transports: ["polling", "websocket"], // required for Vercel
+    transports: ["websocket"], // 🔥 FIX
     cors: {
-      origin: allowedOrigins,  // must match Express
+      origin: allowedOrigins,
       credentials: true,
-      methods: ["GET", "POST"],
     },
   });
 
@@ -21,13 +20,10 @@ export const initSocket = (httpServer) => {
 
     socket.on("JOIN_ADMIN", () => {
       socket.join("ADMIN");
-      console.log(`👮 Admin joined ADMIN room: ${socket.id}`);
     });
 
     socket.on("JOIN_USER", (userId) => {
-      if (!userId) return;
-      socket.join(`USER_${userId}`);
-      console.log(`👤 User joined USER_${userId}`);
+      if (userId) socket.join(`USER_${userId}`);
     });
 
     socket.on("disconnect", () => {
