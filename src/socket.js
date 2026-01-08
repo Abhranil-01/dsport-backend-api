@@ -8,6 +8,7 @@ export const initSocket = (httpServer) => {
     : ["http://localhost:5173", "http://localhost:3000"];
 
   io = new Server(httpServer, {
+    path: "/socket.io", 
     transports: ["polling", "websocket"], // ✅ REQUIRED
     cors: {
       origin: allowedOrigins,
