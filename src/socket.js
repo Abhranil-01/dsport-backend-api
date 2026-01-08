@@ -9,7 +9,7 @@ export const initSocket = (httpServer) => {
 
   io = new Server(httpServer, {
     path: "/socket.io", 
-    transports: [ "websocket"], // ✅ REQUIRED
+    transports: [ "polling","websocket"], // ✅ REQUIRED
     cors: {
       origin: allowedOrigins,
       credentials: true,
