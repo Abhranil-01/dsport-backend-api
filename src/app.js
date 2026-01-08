@@ -17,17 +17,13 @@ const allowedOrigins = process.env.CORS_ORIGIN
 app.use(
   cors({
     origin: (origin, callback) => {
-      // allow server-to-server, Postman, cron, socket internal calls
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin)) {
-        // 🔑 MUST echo the exact origin when credentials=true
-        return callback(null, origin);
+        return callback(null, true);
       }
 
-      // ❌ NEVER throw error here
-      // Just disallow credentials silently
-      return callback(null, false);
+      return callback(null, true); // ← NEVER block at CORS layer
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
