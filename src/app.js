@@ -12,31 +12,29 @@ app.set("trust proxy", 1);
 /* =========================
    CORS CONFIG
 ========================= */
-
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",")
-  : [
-      "http://localhost:3000",
-      "http://localhost:5173",
-    ];
+  : ["http://localhost:3000", "http://localhost:5173"];
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // allow browser direct access, curl, Postman
+      // allow requests with no origin (curl, Postman)
       if (!origin) return callback(null, true);
 
+      // allow only listed origins
       if (allowedOrigins.includes(origin)) {
-        return callback(null, origin); // echo origin (required for credentials)
+        return callback(null, true);
       }
 
-      // ✅ DO NOT block — just don't allow credentials
-      return callback(null, true);
+      // reject all other origins
+      return callback(new Error("CORS not allowed"));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   })
 );
+
 
 
 /* =========================
