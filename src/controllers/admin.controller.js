@@ -4,14 +4,13 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { Admin } from "../models/admin.model.js";
 import jwt from "jsonwebtoken";
 import { uploadFileOnCloudinary } from "../utils/uploadFilesOnCloudinary.js";
-import { sendEmail } from "../utils/sendEmail.js";
+import { addEmailJob } from "../utils/addEmailJob.js";
+import { adminAccountDeletedTemplate, adminRoleUpdatedTemplate, profileUpdatedTemplate, sendCredentialsTemplate } from "../utils/adminEmailTemplate.js";
 
 /* helper */
 const generateUniqueUsername = async (fullname) => {
   // abhranil kundu -> abhranilkundu
-  const baseUsername = fullname
-    .toLowerCase()
-    .replace(/\s+/g, "");
+  const baseUsername = fullname.toLowerCase().replace(/\s+/g, "");
 
   let username = baseUsername;
   let count = 0;
@@ -23,7 +22,6 @@ const generateUniqueUsername = async (fullname) => {
 
   return username;
 };
-
 
 const generateAccessTokenAndRefreshToken = async (adminId) => {
   const admin = await Admin.findById(adminId);
@@ -56,26 +54,24 @@ export const createAdminBySuperAdmin = asyncHandler(async (req, res) => {
     username,
   });
 
-  // 📧 SEND EMAIL
-  await sendEmail({
+
+  await addEmailJob({
     to: email,
-    subject: "Admin Account Created",
-    html: `
-      <h2>Welcome to Dsport Admin Panel</h2>
-      <p>Your admin account has been created.</p>
-      <p><b>Username:</b> ${username}</p>
-      <p><b>Email:</b> ${email}</p>
-      <p><b>Password:</b> ${password}</p>
-      <p>Please login and change your password.</p>
-    `,
+    subject: "Welcome to Dsport Admin Panel",
+    html: sendCredentialsTemplate({
+      fullname,
+      username,
+      email,
+      password,
+      role
+    }),
+    priority: 1,
   });
 
-  res.status(201).json(
-    new ApiResponse(201, admin, "Admin created successfully")
-  );
+  res
+    .status(201)
+    .json(new ApiResponse(201, admin, "Admin created successfully"));
 });
-
-
 
 /* LOGIN */
 export const loginAdmin = asyncHandler(async (req, res) => {
@@ -122,8 +118,6 @@ export const loginAdmin = asyncHandler(async (req, res) => {
     );
 });
 
-
-
 /* LOGOUT */
 export const logoutAdmin = asyncHandler(async (req, res) => {
   await Admin.findByIdAndUpdate(req.admin._id, {
@@ -145,7 +139,6 @@ export const logoutAdmin = asyncHandler(async (req, res) => {
     .clearCookie("adminRefreshToken", cookieOptions)
     .json(new ApiResponse(200, {}, "Admin logged out"));
 });
-
 
 /* REFRESH TOKEN */
 export const refreshAccessToken = asyncHandler(async (req, res) => {
@@ -181,7 +174,6 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, {}, "Token refreshed"));
 });
 
-
 /* GET ALL ADMINS (SUPER ADMIN) */
 export const getAllAdmins = asyncHandler(async (req, res) => {
   const { search, role } = req.query;
@@ -200,13 +192,10 @@ export const getAllAdmins = asyncHandler(async (req, res) => {
     filter.role = role;
   }
 
-  const admins = await Admin.find(filter).select(
-    "-password -refreshToken"
-  );
+  const admins = await Admin.find(filter).select("-password -refreshToken");
 
   res.json(new ApiResponse(200, admins));
 });
-
 
 /* UPDATE OWN PASSWORD */
 
@@ -225,27 +214,22 @@ export const forgotPassword = asyncHandler(async (req, res) => {
   admin.otpExpiry = Date.now() + 10 * 60 * 1000; // 10 mins
   await admin.save({ validateBeforeSave: false });
 
-  await sendEmail({
+ 
+  await addEmailJob({
     to: admin.email,
-    subject: "Password Reset OTP",
-    html: `
-      <h2>Password Reset Request</h2>
-      <p>Your OTP is:</p>
-      <h1>${otp}</h1>
-      <p>This OTP will expire in 10 minutes.</p>
-    `,
+    subject: "Dsport Admin Panel – Password Reset OTP",
+    html: forgotPasswordOtpTemplate({
+      fullname,otp
+    }),
+    priority: 1,
   });
-
   res.json(new ApiResponse(200, {}, "OTP sent to email"));
-});import crypto from "crypto";
+});
 
 export const resetPasswordWithOtp = asyncHandler(async (req, res) => {
   const { email, otp, newPassword } = req.body;
 
-  const hashedOtp = crypto
-    .createHash("sha256")
-    .update(otp)
-    .digest("hex");
+  const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
 
   const admin = await Admin.findOne({
     email,
@@ -263,46 +247,40 @@ export const resetPasswordWithOtp = asyncHandler(async (req, res) => {
 
   await admin.save();
 
-  res.json(
-    new ApiResponse(200, {}, "Password reset successful")
-  );
+  res.json(new ApiResponse(200, {}, "Password reset successful"));
+});
+
+/* UPDATE OWN IMAGE + PHONE */
+export const updateMyProfile = asyncHandler(async (req, res) => {
+  const { fullname } = req.body;
+
+  let avatarUrl;
+  if (req.file) {
+    const upload = await uploadFileOnCloudinary(req.file.path);
+    if (!upload) throw new ApiError(500, "Upload failed");
+    avatarUrl = upload.secure_url;
+  }
+
+  const admin = await Admin.findByIdAndUpdate(
+    req.admin._id,
+    {
+      ...(fullname && { fullname }),
+      ...(avatarUrl && { avatar: avatarUrl }),
+    },
+    { new: true }
+  ).select("-password -refreshToken");
+
+  // 📧 SEND EMAIL
+await addEmailJob({
+  to: admin.email,
+  subject: "Dsport Admin Profile Updated",
+  html: profileUpdatedTemplate({ fullname }),
+  priority:1
 });
 
 
-/* UPDATE OWN IMAGE + PHONE */
-  export const updateMyProfile = asyncHandler(async (req, res) => {
-    const { fullname } = req.body;
-
-    let avatarUrl;
-    if (req.file) {
-      const upload = await uploadFileOnCloudinary(req.file.path);
-      if (!upload) throw new ApiError(500, "Upload failed");
-      avatarUrl = upload.secure_url;
-    }
-
-    const admin = await Admin.findByIdAndUpdate(
-      req.admin._id,
-      {
-        ...(fullname && { fullname }),
-        ...(avatarUrl && { avatar: avatarUrl }),
-      },
-      { new: true }
-    ).select("-password -refreshToken");
-
-    // 📧 SEND EMAIL
-    await sendEmail({
-      to: admin.email,
-      subject: "Profile Updated Successfully",
-      html: `
-        <h3>Profile Update</h3>
-        <p>Your admin profile has been updated successfully.</p>
-        ${fullname ? `<p><b>Updated Name:</b> ${fullname}</p>` : ""}
-      `,
-    });
-
-    res.json(new ApiResponse(200, admin, "Profile updated"));
-  });
-
+  res.json(new ApiResponse(200, admin, "Profile updated"));
+});
 
 /* UPDATE ROLE (SUPER ADMIN) */
 export const updateAdminRole = asyncHandler(async (req, res) => {
@@ -317,19 +295,16 @@ export const updateAdminRole = asyncHandler(async (req, res) => {
   }
 
   // 📧 SEND EMAIL
-  await sendEmail({
-    to: admin.email,
-    subject: "Admin Role Updated",
-    html: `
-      <h3>Role Update Notification</h3>
-      <p>Your admin role has been updated.</p>
-      <p><b>New Role:</b> ${admin.role}</p>
-    `,
-  });
+await addEmailJob({
+  to: admin.email,
+  subject: "Dsport Admin Role Updated",
+  html: adminRoleUpdatedTemplate({ role: admin.role }),
+  priority:1
+});
+
 
   res.json(new ApiResponse(200, admin, "Role updated"));
 });
-
 
 /* DELETE ADMIN (SUPER ADMIN) */
 export const deleteAdminDetails = asyncHandler(async (req, res) => {
@@ -342,33 +317,26 @@ export const deleteAdminDetails = asyncHandler(async (req, res) => {
   await Admin.findByIdAndDelete(req.params.id);
 
   // 📧 SEND EMAIL
-  await sendEmail({
-    to: admin.email,
-    subject: "Admin Account Deleted",
-    html: `
-      <h3>Account Removal Notice</h3>
-      <p>Your admin account has been removed from the system.</p>
-      <p>If this was a mistake, please contact the Super Admin.</p>
-    `,
-  });
+await addEmailJob({
+  to: admin.email,
+  subject: "Dsport Admin Account Removed",
+  html: adminAccountDeletedTemplate(),
+  priority:1
+});
+
 
   res.json(new ApiResponse(200, {}, "Admin deleted"));
 });
 
 /* GET MY PROFILE */
 export const getMyProfile = asyncHandler(async (req, res) => {
-  const admin = await Admin.findById(req.admin._id)
-    .select("-password -refreshToken");
+  const admin = await Admin.findById(req.admin._id).select(
+    "-password -refreshToken"
+  );
 
   if (!admin) {
     throw new ApiError(404, "Admin not found");
   }
 
-  res.json(
-    new ApiResponse(
-      200,
-      admin,
-      "Admin profile fetched successfully"
-    )
-  );
+  res.json(new ApiResponse(200, admin, "Admin profile fetched successfully"));
 });

@@ -85,12 +85,9 @@ const createCategory = asyncHandler(async (req, res) => {
       await session.abortTransaction();
     }
     session.endSession();
-    return res
-      .status(500)
-      .json(new ApiResponse(500, null, error.message));
+    return res.status(500).json(new ApiResponse(500, null, error.message));
   }
 });
-
 
 const getCategory = asyncHandler(async (req, res) => {
   const { categoryName, draft } = req.query;
@@ -151,15 +148,13 @@ const getCategory = asyncHandler(async (req, res) => {
     new ApiResponse(
       200,
       {
-        data:categories,
+        data: categories,
         totalCategories,
       },
       "Categories fetched successfully"
     )
   );
 });
-
-
 
 const updateCategory = asyncHandler(async (req, res) => {
   const { id } = req.params;
@@ -187,7 +182,9 @@ const updateCategory = asyncHandler(async (req, res) => {
     if (categoryImageID && newUploadedImage) {
       const oldImage = await CategoryImage.findById(categoryImageID);
       if (oldImage) {
-        await CategoryImage.deleteOne({ _id: categoryImageID }).session(session);
+        await CategoryImage.deleteOne({ _id: categoryImageID }).session(
+          session
+        );
         await destroyCloudinaryImage({
           publicId: oldImage.cloudinaryPublicId,
         });
@@ -229,8 +226,6 @@ const updateCategory = asyncHandler(async (req, res) => {
     session.endSession();
   }
 });
-
-
 
 const getCategoryById = asyncHandler(async (req, res) => {
   const { id } = req.params;
@@ -277,7 +272,6 @@ const getCategoryById = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(201, category, "Subcategory Fetched Successfully"));
 });
-
 
 const deleteCategory = asyncHandler(async (req, res) => {
   const { id } = req.params;
@@ -333,7 +327,10 @@ const deleteCategory = asyncHandler(async (req, res) => {
     // Step 2: Delete all subcategories of this category (DB only)
     if (categoryData.subcategory.length) {
       const subCategoryIds = categoryData.subcategory.map((s) => s._id);
-      const { cloudinaryIds } = await subCategoryDeletion(subCategoryIds, session);
+      const { cloudinaryIds } = await subCategoryDeletion(
+        subCategoryIds,
+        session
+      );
       cloudinaryIdsToDelete.push(...cloudinaryIds);
     }
 
@@ -347,7 +344,9 @@ const deleteCategory = asyncHandler(async (req, res) => {
     }
 
     // Step 4: Delete the category itself
-    const categoryDelete = await ProductCategory.deleteOne({ _id: id }).session(session);
+    const categoryDelete = await ProductCategory.deleteOne({ _id: id }).session(
+      session
+    );
     if (!categoryDelete || categoryDelete.deletedCount === 0) {
       throw new ApiError(500, "Category not deleted");
     }
@@ -362,10 +361,16 @@ const deleteCategory = asyncHandler(async (req, res) => {
         await destroyCloudinaryImage({ publicId });
       }
     }
+    const io = getIO();
+    io.emit("CATEGORY_DELETED", {
+      categoryId: id,
+    });
 
     return res
       .status(200)
-      .json(new ApiResponse(200, { categoryData }, "Category deleted successfully"));
+      .json(
+        new ApiResponse(200, { categoryData }, "Category deleted successfully")
+      );
   } catch (error) {
     if (session.inTransaction()) {
       await session.abortTransaction();

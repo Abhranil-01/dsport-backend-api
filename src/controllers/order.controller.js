@@ -25,13 +25,11 @@ import { getIO } from "../socket.js";
 import {invoiceQueue} from '../queues/invoice.queues.js';
 // import crypto from 'crypto'
 import {
-
   paymentStatusEmail,
   deliveryStatusEmail,
   orderCancelledEmail,
-  invoiceEmailTemplate,
 } from "../utils/orderEmails.js";
-
+import { addEmailJob } from './../utils/addEmailJob.js';
 
 
 
@@ -470,7 +468,7 @@ export const updateOrder = asyncHandler(async (req, res) => {
   try {
     session.startTransaction();
 
-    order = await Order.findById(id).populate("user", "email").session(session);
+    order = await Order.findById(id).populate("user", "email").populate("addressId","email").session(session);
 
     if (!order) {
       throw new ApiError(404, "Order not found");
@@ -551,23 +549,25 @@ export const updateOrder = asyncHandler(async (req, res) => {
       io.to(`USER_${userId}`).emit("ORDER_UPDATED", payload);
 
       /* 📧 EMAIL JOBS */
-      for (const job of emailJobs) {
-        if (job.type === "payment") {
-          await sendEmail({
-            to: order.user.email,
-            subject: "Payment Status Updated",
-            html: paymentStatusEmail(order),
-          });
-        }
+   for (const job of emailJobs) {
+  if (job.type === "payment") {
+    await addEmailJob({
+      to: [order.user.email, order.addressId?.email].filter(Boolean),
+      subject: "Payment Status Updated",
+      html: paymentStatusEmail(order),
+      priority: 2,
+    });
+  }
 
-        if (job.type === "delivery") {
-          await sendEmail({
-            to: order.user.email,
-            subject: "Delivery Status Updated",
-            html: deliveryStatusEmail(order),
-          });
-        }
-      }
+  if (job.type === "delivery") {
+    await addEmailJob({
+       to: [order.user.email, order.addressId?.email].filter(Boolean),
+      subject: "Delivery Status Updated",
+      html: deliveryStatusEmail(order),
+      priority: 2,
+    });
+  }
+}
     } catch (err) {
       console.error("Post-update process failed:", err.message);
     }
@@ -1204,7 +1204,10 @@ export const cancelOrder = asyncHandler(async (req, res) => {
       _id: new mongoose.Types.ObjectId(orderId),
       user: req.user._id,
       orderStatus: "Active",
-    }).session(session);
+    })
+    .populate("user","email")
+    .populate("addressId","email")
+    .session(session);
 
     if (!order) {
       throw new ApiError(404, "Order not found or already cancelled");
@@ -1276,11 +1279,12 @@ export const cancelOrder = asyncHandler(async (req, res) => {
       io.to(`USER_${req.user._id.toString()}`).emit("ORDER_UPDATED", payload);
 
       // EMAIL
-      await sendEmail({
-        to: req.user.email,
-        subject: "Your order has been cancelled",
-        html: orderCancelledEmail(order),
-      });
+     await addEmailJob({
+      to: [order.user.email, order.addressId?.email].filter(Boolean),
+      subject: "Your order has been cancelled",
+      html: orderCancelledEmail(order),
+      priority: 2,
+    });
     } catch (err) {
       console.error("Post-cancel process failed:", err.message);
     }

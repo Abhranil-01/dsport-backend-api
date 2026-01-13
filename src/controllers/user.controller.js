@@ -4,8 +4,9 @@ import { User } from "../models/user.model.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
 import otpGenerator from "otp-generator";
-import { sendEmail } from "../utils/sendEmail.js";
 import {  otpEmailLoginTemplate, registerOtpEmailTemplate, resendOtpEmailTemplate } from "../utils/otpEmailTemplate.js";
+import { addEmailJob } from "../utils/addEmailJob.js";
+
 const generateAccessTokenAndRefreshToken = async (userId) => {
   try {
     const user = await User.findById(userId);
@@ -78,11 +79,13 @@ const userRegister = asyncHandler(async (req, res) => {
   }
 
   // Send OTP email
-  await sendEmail({
-    to: email,
-    subject: "OTP for Register",
-    html: registerOtpEmailTemplate(otp),
-  });
+
+await addEmailJob({
+  to: email,
+  subject: "OTP for Registration",
+  html: registerOtpEmailTemplate(otp),
+  priority: 1,
+});
 
   res
     .status(201)
@@ -128,11 +131,13 @@ const loginUser = asyncHandler(async (req, res) => {
   user.otpExpiry = new Date(Date.now() + 2 * 60 * 1000);
   await user.save();
 
-  await sendEmail({
-    to: email,
-    subject: "OTP for Login",
-    html: otpEmailLoginTemplate(otp),
-  });
+await addEmailJob({
+  to: email,
+  subject: "OTP for Login",
+  html: otpEmailLoginTemplate(otp),
+  priority: 1,
+});
+
 
   res.status(200).json(new ApiResponse(200, {}, "OTP sent successfully"));
 });
@@ -274,12 +279,14 @@ const resendOtp = asyncHandler(async (req, res) => {
   user.otpExpiry = Date.now() + 5 * 60 * 1000; // 5 min expiry
   await user.save();
 
+  
+await addEmailJob({
+  to: email,
+  subject: "New OTP",
+  html: resendOtpEmailTemplate(otp),
+  priority: 1,
+});
 
- await sendEmail({
-    to: email,
-    subject: "OTP for Login",
-    html: resendOtpEmailTemplate(otp),
-  });
   return res
     .status(200)
     .json(new ApiResponse(200, {}, "OTP resent successfully"));

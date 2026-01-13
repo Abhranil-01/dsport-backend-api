@@ -216,34 +216,34 @@ export const generateInvoicePdf = async (order, user, address) => {
   return { invoicePath };
 };
 
-export async function sendInvoiceEmail(
-  toEmail,
-  subject,
-  text,
-  attachmentPath,
-  attachmentName,
-  html
-) {
-  const emailList = Array.isArray(toEmail) ? toEmail : [toEmail];
-  const uniqueEmails = [...new Set(emailList)];
+// export async function sendInvoiceEmail(
+//   toEmail,
+//   subject,
+//   text,
+//   attachmentPath,
+//   attachmentName,
+//   html
+// ) {
+//   const emailList = Array.isArray(toEmail) ? toEmail : [toEmail];
+//   const uniqueEmails = [...new Set(emailList)];
 
-  for (const email of uniqueEmails) {
-    const mailOptions = {
-      from: `"Dsport" <${process.env.SMTP_USER}>`,
-      to: email,
-      subject:
-        subject || "Invoice from " + (process.env.STORE_NAME || "Dsport"),
-      text: text || "Please find your invoice.",
-      html: html,
-      attachments:
-        attachmentPath && !attachmentPath.startsWith("http")
-          ? [{ filename: attachmentName, path: attachmentPath }]
-          : [],
-    };
+//   for (const email of uniqueEmails) {
+//     const mailOptions = {
+//       from: `"Dsport" <${process.env.SMTP_USER}>`,
+//       to: email,
+//       subject:
+//         subject || "Invoice from " + (process.env.STORE_NAME || "Dsport"),
+//       text: text || "Please find your invoice.",
+//       html: html,
+//       attachments:
+//         attachmentPath && !attachmentPath.startsWith("http")
+//           ? [{ filename: attachmentName, path: attachmentPath }]
+//           : [],
+//     };
 
-    // keep sendMail awaited so caller can catch errors if they want
-    await transporter.sendMail(mailOptions);
-  }
+//     // keep sendMail awaited so caller can catch errors if they want
+//     await transporter.sendMail(mailOptions);
+//   }
 
-  return { sentTo: uniqueEmails };
-}
+//   return { sentTo: uniqueEmails };
+// }

@@ -45,7 +45,7 @@ export const invoiceEmailTemplate = ({
           <tr>
             <td style="padding:30px; color:#333;">
               <p style="font-size:15px;">
-                Hi <strong>${username}</strong>,
+                Hello,
               </p>
 
               <p style="font-size:15px; line-height:1.6;">
@@ -103,35 +103,160 @@ export const invoiceEmailTemplate = ({
 </body>
 </html>
 `;
+const baseEmailTemplate = ({ title, content }) => `
+  <div style="background:#f4f6f8;padding:24px;font-family:Arial,Helvetica,sans-serif">
+    <div style="
+      max-width:600px;
+      margin:0 auto;
+      background:#ffffff;
+      border-radius:8px;
+      overflow:hidden;
+      box-shadow:0 2px 8px rgba(0,0,0,0.08)
+    ">
+      
+      <!-- HEADER -->
+      <div style="background:#0d6efd;color:#ffffff;padding:16px 24px">
+        <h1 style="margin:0;font-size:20px;">Dsport</h1>
+        <p style="margin:4px 0 0;font-size:12px;opacity:0.9">
+          All Sports. One Store.
+        </p>
+      </div>
 
-export const paymentStatusEmail = (order) => `
-  <h2>Payment Status Updated</h2>
-  <p>Your payment for order <b>${order._id}</b> is now <b>${order.paymentStatus}</b>.</p>
-  <p>Total Amount: ₹${order.totalPayableAmount.toLocaleString("en-IN")}</p>
+      <!-- BODY -->
+      <div style="padding:24px;color:#333">
+        <h2 style="margin-top:0">${title}</h2>
+        ${content}
+      </div>
+
+      <!-- FOOTER -->
+      <div style="
+        padding:16px;
+        font-size:12px;
+        text-align:center;
+        color:#777;
+        background:#fafafa
+      ">
+        © ${new Date().getFullYear()} Dsport. All rights reserved.
+      </div>
+
+    </div>
+  </div>
 `;
 
-export const deliveryStatusEmail = (order) => `
-  <h2>Delivery Status Updated</h2>
-  <p>Your order <b>${order._id}</b> is now <b>${order.deliveryStatus}</b>.</p>
-  ${
-    order.deliveryStatus === "Delivered"
-      ? "<p>🎉 Your order has been delivered successfully.</p>"
-      : ""
-  }
-`;
-export const orderCancelledEmail = (order) => {
-  return `
-    <div style="font-family: Arial, sans-serif">
-      <h2>Order Cancelled</h2>
-      <p>Your order <b>#${order._id}</b> has been successfully cancelled.</p>
+
+export const paymentStatusEmail = (order) =>
+  baseEmailTemplate({
+    title: "Payment Status Updated",
+    content: `
+      <p>Hello,</p>
+
+      <p>
+        Your payment for order 
+        <strong>#${order._id}</strong> has been updated.
+      </p>
+
+      <div style="
+        margin:16px 0;
+        padding:16px;
+        background:#f1f7ff;
+        border-left:4px solid #0d6efd
+      ">
+        <p style="margin:0">
+          <strong>Status:</strong> ${order.paymentStatus}
+        </p>
+        <p style="margin:8px 0 0">
+          <strong>Total Amount:</strong> ₹${order.totalPayableAmount.toLocaleString("en-IN")}
+        </p>
+      </div>
+
+      <p>
+        If you have any questions, feel free to contact our support team.
+      </p>
+
+      <p>Thank you for shopping with Dsport!</p>
+    `,
+  });
+
+export const deliveryStatusEmail = (order) =>
+  baseEmailTemplate({
+    title: "Delivery Status Update",
+    content: `
+      <p>Hello,</p>
+
+      <p>
+        The delivery status of your order 
+        <strong>#${order._id}</strong> has been updated.
+      </p>
+
+      <div style="
+        margin:16px 0;
+        padding:16px;
+        background:#f8f9fa;
+        border-left:4px solid #198754
+      ">
+        <p style="margin:0">
+          <strong>Current Status:</strong> ${order.deliveryStatus}
+        </p>
+      </div>
 
       ${
-        order.paymentStatus === "Refunded"
-          ? "<p>Your refund will be processed shortly.</p>"
-          : "<p>No payment was charged for this order.</p>"
+        order.deliveryStatus === "Delivered"
+          ? `
+            <div style="
+              margin-top:16px;
+              padding:16px;
+              background:#e9f7ef;
+              border-radius:6px
+            ">
+              <p style="margin:0">
+                🎉 <strong>Your order has been delivered successfully!</strong>
+              </p>
+              <p style="margin:8px 0 0">
+                We hope you enjoy your purchase.
+              </p>
+            </div>
+          `
+          : ""
       }
 
-      <p>Thank you for shopping with us.</p>
-    </div>
-  `;
-};
+      <p style="margin-top:24px">
+        Thank you for choosing Dsport.
+      </p>
+    `,
+  });
+
+export const orderCancelledEmail = (order) =>
+  baseEmailTemplate({
+    title: "Order Cancelled",
+    content: `
+      <p>Hello,</p>
+
+      <p>
+        Your order <strong>#${order._id}</strong> has been successfully cancelled.
+      </p>
+
+      <div style="
+        margin:16px 0;
+        padding:16px;
+        background:#fff3cd;
+        border-left:4px solid #ffc107
+      ">
+        ${
+          order.paymentStatus === "Refunded"
+            ? `<p style="margin:0">
+                💰 Your refund has been initiated and will be processed shortly.
+              </p>`
+            : `<p style="margin:0">
+                No payment was charged for this order.
+              </p>`
+        }
+      </div>
+
+      <p>
+        If you need help or have any concerns, our support team is always here.
+      </p>
+
+      <p>Regards,<br /><strong>Team Dsport</strong></p>
+    `,
+  });
+
