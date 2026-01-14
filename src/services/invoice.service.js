@@ -10,7 +10,11 @@ import nodemailer from "nodemailer";
 
 /* ================= DATABASE MODELS ================= */
 import { OrderItem } from "../models/orderItems.model.js";
-
+import { Order } from "../models/order.model.js";
+import { ProductColorWiseItem } from "../models/productColorWiseItem.model.js";
+import { ProductPriceAndSizeAndStock } from "../models/ProductPriceAndSizeAndStock.model.js";
+import {ProductCoverImage} from '../models/productCoverImage.js'
+import {Product} from '../models/product.model.js'
 /* ================= OPTIONAL (IF USED) ================= */
 // If you log errors
 // import logger from "../utils/logger.js";
@@ -28,18 +32,10 @@ const FONT_PATH = path.join(
   "NotoSans-Regular.ttf"
 );
 // Nodemailer transporter (ensure env variables are set)
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT) || 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_MAIL,
-    pass: process.env.SMTP_PASSWORD,
-  },
-});
+
 // Invoice directory
-const INVOICE_DIR = "/tmp";
-fse.ensureDirSync(INVOICE_DIR);
+// const INVOICE_DIR = "/tmp";
+// fse.ensureDirSync(INVOICE_DIR);
 
 // Generate invoice PDF (returns { invoicePath, invoiceFileName })
 
@@ -55,7 +51,7 @@ export const generateInvoicePdf = async (order, user, address) => {
     })
     .populate("sizeId");
 
-  const invoiceDir = path.join(process.cwd(), "invoices");
+  const invoiceDir = path.join(process.cwd(), "tmp");
   await fse.ensureDir(invoiceDir);
 
   const invoicePath = path.join(
@@ -216,34 +212,3 @@ export const generateInvoicePdf = async (order, user, address) => {
   return { invoicePath };
 };
 
-// export async function sendInvoiceEmail(
-//   toEmail,
-//   subject,
-//   text,
-//   attachmentPath,
-//   attachmentName,
-//   html
-// ) {
-//   const emailList = Array.isArray(toEmail) ? toEmail : [toEmail];
-//   const uniqueEmails = [...new Set(emailList)];
-
-//   for (const email of uniqueEmails) {
-//     const mailOptions = {
-//       from: `"Dsport" <${process.env.SMTP_USER}>`,
-//       to: email,
-//       subject:
-//         subject || "Invoice from " + (process.env.STORE_NAME || "Dsport"),
-//       text: text || "Please find your invoice.",
-//       html: html,
-//       attachments:
-//         attachmentPath && !attachmentPath.startsWith("http")
-//           ? [{ filename: attachmentName, path: attachmentPath }]
-//           : [],
-//     };
-
-//     // keep sendMail awaited so caller can catch errors if they want
-//     await transporter.sendMail(mailOptions);
-//   }
-
-//   return { sentTo: uniqueEmails };
-// }
