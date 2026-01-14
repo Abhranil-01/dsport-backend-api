@@ -8,6 +8,7 @@ import { generateInvoicePdf } from "../services/invoice.service.js";
 import { uploadInvoiceOnCloudinary } from "../utils/uploadInvoiceOnCloudinary.js";
 
 import { invoiceEmailTemplate } from "../utils/orderEmails.js";
+import { addEmailJob } from './../utils/addEmailJob';
 
 
 await connectDB();
