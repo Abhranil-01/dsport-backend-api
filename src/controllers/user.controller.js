@@ -176,7 +176,7 @@ const verifyOtp = asyncHandler(async (req, res) => {
     httpOnly: true,
     secure: isProduction, // true only in production
     sameSite: isProduction ? "none" : "lax",
-    domain: isProduction ? ".dsportdb.online" : undefined,
+    domain: isProduction ? "api.dsportdb.online" : undefined,
     path: "/",
   };
   res
@@ -205,7 +205,7 @@ const logoutUser = asyncHandler(async (req, res) => {
     httpOnly: true,
     secure: isProduction, // true in production
     sameSite: isProduction ? "none" : "lax",
-    domain: isProduction ? ".dsportdb.online" : undefined,
+    domain: isProduction ? "api.dsportdb.online" : undefined,
     path: "/",
   };
 

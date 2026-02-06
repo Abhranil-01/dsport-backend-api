@@ -103,7 +103,7 @@ export const loginAdmin = asyncHandler(async (req, res) => {
     httpOnly: true,
     secure: isProduction,
     sameSite: isProduction ? "none" : "lax",
-    domain: isProduction ? ".dsportdb.online" : undefined,
+    domain: isProduction ? "api.dsportdb.online" : undefined,
     path: "/",
   };
 
