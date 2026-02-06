@@ -5,7 +5,7 @@ import { Admin } from "../models/admin.model.js";
 import jwt from "jsonwebtoken";
 import { uploadFileOnCloudinary } from "../utils/uploadFilesOnCloudinary.js";
 import { addEmailJob } from "../utils/addEmailJob.js";
-import { adminAccountDeletedTemplate, adminRoleUpdatedTemplate, profileUpdatedTemplate, sendCredentialsTemplate } from "../utils/adminEmailTemplate.js";
+import { adminAccountDeletedTemplate, adminRoleUpdatedTemplate, profileUpdatedTemplate, sendCredentialsTemplate,forgotPasswordOtpTemplate } from "../utils/adminEmailTemplate.js";
 import  crypto  from 'crypto';
 
 /* helper */
