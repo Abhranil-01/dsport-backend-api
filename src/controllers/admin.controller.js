@@ -220,7 +220,8 @@ export const forgotPassword = asyncHandler(async (req, res) => {
     to: admin.email,
     subject: "Dsport Admin Panel – Password Reset OTP",
     html: forgotPasswordOtpTemplate({
-      fullname,otp
+      fullname: admin.fullname,
+      otp,
     }),
     priority: 1,
   });
