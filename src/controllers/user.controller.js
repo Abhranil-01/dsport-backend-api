@@ -292,6 +292,11 @@ await addEmailJob({
     .json(new ApiResponse(200, {}, "OTP resent successfully"));
 });
 
+const getAllUser= asyncHandler(async(req,res)=>{
+  const users = await User.find({isVerified:true}).select("-refreshToken -otp -otpExpiry -password");
+  res.status(200).json(new ApiResponse(200,{users}, "Users fetched successfully"));
+});
+
 export {
   userRegister,
   loginUser,
@@ -300,4 +305,5 @@ export {
   resendOtp,
   verifyOtp,
   getUser,
+  getAllUser
 };
