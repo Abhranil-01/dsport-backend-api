@@ -11,7 +11,7 @@ const addressSchema = new Schema(
     city: { type: String },
     state: { type: String },
     pincode: { type: Number },
-    country: { type: String },
+    country: { type: String, default: "India" },
     user:{
       type:Schema.Types.ObjectId,
       ref:"User"
